@@ -7,6 +7,7 @@ public struct AppSettingsStore: @unchecked Sendable {
     private let tierMappingKey = "com.sayantan.aichatrouter.tierModelMapping"
     private let limiterConfigKey = "com.sayantan.aichatrouter.limiterConfig"
     private let routingSensitivityKey = "com.sayantan.aichatrouter.routingSensitivity"
+    private let webSearchEnabledKey = "com.sayantan.aichatrouter.webSearchEnabled"
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -51,5 +52,14 @@ public struct AppSettingsStore: @unchecked Sendable {
 
     public func saveRoutingSensitivity(_ sensitivity: RoutingSensitivity) {
         defaults.set(sensitivity.rawValue, forKey: routingSensitivityKey)
+    }
+
+    public func loadWebSearchEnabled() -> Bool {
+        guard defaults.object(forKey: webSearchEnabledKey) != nil else { return true }
+        return defaults.bool(forKey: webSearchEnabledKey)
+    }
+
+    public func saveWebSearchEnabled(_ enabled: Bool) {
+        defaults.set(enabled, forKey: webSearchEnabledKey)
     }
 }

@@ -78,11 +78,17 @@ public actor RoutingCoordinator {
             adjusted.searchOverrideTier = .cloudFast
         }
 
-        if adjusted.tier != .local, await !networkStatus.isOnline {
-            adjusted.downgradedFrom = adjusted.downgradedFrom ?? adjusted.tier
-            adjusted.tier = .local
+        // Checked unconditionally, not just when adjusted.tier != .local: a cap
+        // cascade above can already have landed the tier on .local by itself
+        // (independent of being offline) while still leaving requiresSearchPermission
+        // set — offline must still clear that permission ask, since it's a hard
+        // constraint, not a policy choice, regardless of how tier reached .local.
+        if await !networkStatus.isOnline {
+            if adjusted.tier != .local {
+                adjusted.downgradedFrom = adjusted.downgradedFrom ?? adjusted.tier
+                adjusted.tier = .local
+            }
             adjusted.downgradeReason = "You're offline — routed to the local model"
-            // Offline is a hard constraint, not a policy choice — no permission ask.
             adjusted.requiresSearchPermission = false
             adjusted.searchOverrideTier = nil
         }

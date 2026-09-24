@@ -324,4 +324,37 @@ struct RoutingCoordinatorTests {
         #expect(decision.searchOverrideTier == nil)
         #expect(decision.downgradeReason?.contains("offline") == true)
     }
+
+    @Test func offlineOverridesCapConflictPermissionEvenWhenCapAlreadyForcedLocal() async throws {
+        let db = try AppDatabase.openInMemory()
+        let conversations = ConversationStore(database: db)
+        let logStore = RoutingLogStore(database: db)
+
+        let conversation = Conversation(title: "Test")
+        try await conversations.create(conversation)
+
+        // Both a cap cascade AND offline apply at once: the cap cascade lands the
+        // tier on .local by itself (independent of offline), so the offline check
+        // — gated on "tier isn't already local" — never got a chance to clear the
+        // permission flag the cap-conflict check had already set. Offline must
+        // still win: no permission ask, ever, regardless of how tier got to .local.
+        let router = FakeQueryRouter(decision: RoutingDecision(
+            tier: .cloudAdvanced, latencyMS: 10, needsWebSearch: true
+        ))
+        let coordinator = RoutingCoordinator(
+            router: router,
+            logStore: logStore,
+            usageLimiter: AlwaysDowngradesToLocalUsageLimiter(),
+            networkStatus: FakeNetworkStatus(isOnline: false),
+            settingsStore: settingsStore()
+        )
+
+        let context = RoutingContext(conversationID: conversation.id, recentTurns: [], candidateQuery: "today's stock prices, analyze deeply")
+        let decision = await coordinator.decide(context)
+
+        #expect(decision.tier == .local)
+        #expect(decision.requiresSearchPermission == false)
+        #expect(decision.searchOverrideTier == nil)
+        #expect(decision.downgradeReason?.contains("offline") == true)
+    }
 }

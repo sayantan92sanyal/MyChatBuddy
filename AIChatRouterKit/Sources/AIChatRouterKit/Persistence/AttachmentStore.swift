@@ -2,10 +2,13 @@ import Foundation
 import GRDB
 
 public struct AttachmentStore: Sendable {
-    /// Combined character budget across every attachment in one conversation —
-    /// generous enough for real documents while staying comfortably inside any
-    /// current cloud model's context window alongside real conversation history.
-    public static let combinedCharacterLimit = 50_000
+    /// Default combined character budget across every attachment in one
+    /// conversation — generous enough for real documents while staying
+    /// comfortably inside any current cloud model's context window alongside
+    /// real conversation history. User-configurable via
+    /// `AppSettingsStore.loadAttachmentSizeCapCharacters()`; this is the fallback
+    /// when no override has been saved.
+    public static let defaultCharacterLimit = 50_000
 
     private let dbQueue: DatabaseQueue
 
@@ -41,7 +44,9 @@ public struct AttachmentStore: Sendable {
     /// The actual cap-boundary decision, kept here (not inline in `ChatViewModel`,
     /// which has no automated test target in this app) so the off-by-one — landing
     /// exactly on the limit must NOT count as exceeding it — is verified by a test.
-    public static func wouldExceedLimit(existing: [Attachment], addingLength: Int) -> Bool {
-        combinedLength(of: existing) + addingLength > combinedCharacterLimit
+    /// `limit` defaults to `defaultCharacterLimit` but callers pass the
+    /// user-configured value from `AppSettingsStore` when one has been saved.
+    public static func wouldExceedLimit(existing: [Attachment], addingLength: Int, limit: Int = defaultCharacterLimit) -> Bool {
+        combinedLength(of: existing) + addingLength > limit
     }
 }

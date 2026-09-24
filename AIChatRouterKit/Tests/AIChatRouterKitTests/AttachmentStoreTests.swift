@@ -67,7 +67,7 @@ struct AttachmentStoreTests {
         // as exceeding it — this is the off-by-one this helper exists to pin down.
         let existing = [Attachment(
             conversationID: UUID(), filename: "a.txt", fileType: "txt",
-            extractedText: String(repeating: "x", count: AttachmentStore.combinedCharacterLimit - 100),
+            extractedText: String(repeating: "x", count: AttachmentStore.defaultCharacterLimit - 100),
             sizeBytes: 0
         )]
         #expect(AttachmentStore.wouldExceedLimit(existing: existing, addingLength: 100) == false)
@@ -76,7 +76,7 @@ struct AttachmentStoreTests {
     @Test func wouldExceedLimitIsTrueOneOverTheBoundary() {
         let existing = [Attachment(
             conversationID: UUID(), filename: "a.txt", fileType: "txt",
-            extractedText: String(repeating: "x", count: AttachmentStore.combinedCharacterLimit - 100),
+            extractedText: String(repeating: "x", count: AttachmentStore.defaultCharacterLimit - 100),
             sizeBytes: 0
         )]
         #expect(AttachmentStore.wouldExceedLimit(existing: existing, addingLength: 101) == true)
@@ -84,5 +84,17 @@ struct AttachmentStoreTests {
 
     @Test func wouldExceedLimitIsFalseWellUnderTheCap() {
         #expect(AttachmentStore.wouldExceedLimit(existing: [], addingLength: 500) == false)
+    }
+
+    @Test func wouldExceedLimitRespectsACustomLimit() {
+        // A caller (ChatViewModel, reading the user-configured cap from
+        // AppSettingsStore) can pass a limit other than the built-in default.
+        let existing = [Attachment(
+            conversationID: UUID(), filename: "a.txt", fileType: "txt",
+            extractedText: String(repeating: "x", count: 90),
+            sizeBytes: 0
+        )]
+        #expect(AttachmentStore.wouldExceedLimit(existing: existing, addingLength: 5, limit: 100) == false)
+        #expect(AttachmentStore.wouldExceedLimit(existing: existing, addingLength: 11, limit: 100) == true)
     }
 }

@@ -8,6 +8,7 @@ public struct AppSettingsStore: @unchecked Sendable {
     private let limiterConfigKey = "com.sayantan.aichatrouter.limiterConfig"
     private let routingSensitivityKey = "com.sayantan.aichatrouter.routingSensitivity"
     private let webSearchEnabledKey = "com.sayantan.aichatrouter.webSearchEnabled"
+    private let attachmentSizeCapKey = "com.sayantan.aichatrouter.attachmentSizeCapCharacters"
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -61,5 +62,14 @@ public struct AppSettingsStore: @unchecked Sendable {
 
     public func saveWebSearchEnabled(_ enabled: Bool) {
         defaults.set(enabled, forKey: webSearchEnabledKey)
+    }
+
+    public func loadAttachmentSizeCapCharacters() -> Int {
+        let value = defaults.integer(forKey: attachmentSizeCapKey)
+        return value > 0 ? value : AttachmentStore.defaultCharacterLimit
+    }
+
+    public func saveAttachmentSizeCapCharacters(_ value: Int) {
+        defaults.set(value, forKey: attachmentSizeCapKey)
     }
 }

@@ -8,6 +8,9 @@ options:
 packages:
   AIChatRouterKit:
     path: AIChatRouterKit
+  MarkdownUI:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    from: 2.4.0
 
 targets:
   AIChatRouter:
@@ -17,6 +20,7 @@ targets:
       - path: AIChatRouter
     dependencies:
       - package: AIChatRouterKit
+      - package: MarkdownUI
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sayantan.aichatrouter.app

@@ -1,4 +1,5 @@
 import SwiftUI
+import MarkdownUI
 import AIChatRouterKit
 
 struct MessageBubbleView: View {
@@ -10,9 +11,18 @@ struct MessageBubbleView: View {
         HStack {
             if message.role == .user { Spacer(minLength: 40) }
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
-                Text(message.content)
-                    .padding(10)
-                    .background(bubbleColor, in: RoundedRectangle(cornerRadius: 12))
+                // Only the model's replies get Markdown rendering — a user's own
+                // typed message stays literal, since they didn't necessarily
+                // intend "#" or "-" at the start of a line as formatting.
+                Group {
+                    if message.role == .assistant {
+                        Markdown(message.content)
+                    } else {
+                        Text(message.content)
+                    }
+                }
+                .padding(10)
+                .background(bubbleColor, in: RoundedRectangle(cornerRadius: 12))
                 if message.role == .assistant, let tier = message.tier {
                     ModelBadgeView(
                         tier: tier,

@@ -230,6 +230,40 @@ struct RoutingCoordinatorTests {
         #expect(decision.requiresSearchPermission == false)
     }
 
+    @Test func webSearchToggleOffForcesLocalEvenWhenClassifierAssignedCloudTierDirectly() async throws {
+        let db = try AppDatabase.openInMemory()
+        let conversations = ConversationStore(database: db)
+        let logStore = RoutingLogStore(database: db)
+
+        let conversation = Conversation(title: "Test")
+        try await conversations.create(conversation)
+
+        // The local classifier can't cleanly separate "needs current info" from
+        // "is FAST/ADVANCED-worthy" — it may hand back a cloud tier directly
+        // (not via the local->cloudFast bump) for a query whose only reason for
+        // escalation was needing search. With search off, that tier judgment
+        // can't be trusted, so it should be forced back to local rather than
+        // spending a cloud call that can't actually search.
+        let router = FakeQueryRouter(decision: RoutingDecision(
+            tier: .cloudFast, latencyMS: 10, needsWebSearch: true
+        ))
+        let coordinator = RoutingCoordinator(
+            router: router,
+            logStore: logStore,
+            usageLimiter: PassthroughUsageLimiter(),
+            networkStatus: FakeNetworkStatus(isOnline: true),
+            settingsStore: settingsStore(webSearchEnabled: false)
+        )
+
+        let context = RoutingContext(conversationID: conversation.id, recentTurns: [], candidateQuery: "what's a notable headline today")
+        let decision = await coordinator.decide(context)
+
+        #expect(decision.tier == .local)
+        #expect(decision.needsWebSearch == false)
+        #expect(decision.requiresSearchPermission == false)
+        #expect(decision.downgradedFrom == .cloudFast)
+    }
+
     @Test func capCascadeConflictingWithSearchNeedOffersCloudFastNotOriginalTier() async throws {
         let db = try AppDatabase.openInMemory()
         let conversations = ConversationStore(database: db)

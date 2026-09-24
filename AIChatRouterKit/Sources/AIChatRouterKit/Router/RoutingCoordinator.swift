@@ -40,15 +40,30 @@ public actor RoutingCoordinator {
             )
         }
 
+        // Captured before suppression: the on-device classifier is a single small
+        // model call that doesn't cleanly separate "needs current info" from "is
+        // this FAST/ADVANCED-worthy" — a search-flavored query often comes back
+        // with a cloud tier attached directly, not only via the bump below. That
+        // tier judgment can't be trusted once search is off, since we can't tell
+        // how much of it was genuine complexity vs. search-flavor bias.
+        let classifierWantedSearch = raw.needsWebSearch
+        let webSearchEnabled = settingsStore.loadWebSearchEnabled()
+
         // Toggle check happens before anything downstream can see needsWebSearch —
         // when off, it's as if the classifier never said SEARCH at all.
-        if !settingsStore.loadWebSearchEnabled() {
+        if !webSearchEnabled {
             raw.needsWebSearch = false
         }
 
         // Search need always forces at least Cloud Fast — only cloud tiers can search.
         if raw.needsWebSearch, raw.tier == .local {
             raw.tier = .cloudFast
+        }
+
+        if !webSearchEnabled, classifierWantedSearch, raw.tier != .local {
+            raw.downgradedFrom = raw.tier
+            raw.downgradeReason = "Web search is off — staying local rather than spending a cloud call on a query that needed current info"
+            raw.tier = .local
         }
 
         var adjusted = await usageLimiter.applyCaps(to: raw, conversationID: context.conversationID)

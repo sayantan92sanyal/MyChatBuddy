@@ -134,19 +134,33 @@ struct ChatView: View {
             allowsMultipleSelection: true
         ) { result in
             guard case .success(let urls) = result else { return }
-            for url in urls {
-                let didAccess = url.startAccessingSecurityScopedResource()
-                Task {
+            // Attach sequentially, not as separate concurrent Tasks: addAttachment
+            // checks the combined size cap against `attachments` synchronously at
+            // the start of its own call, so two files attached concurrently could
+            // both pass the check before either is appended, bypassing the cap
+            // multi-select is explicitly meant to be checked against.
+            Task {
+                for url in urls {
+                    let didAccess = url.startAccessingSecurityScopedResource()
                     await viewModel.addAttachment(fileURL: url)
                     if didAccess { url.stopAccessingSecurityScopedResource() }
                 }
             }
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-            for provider in providers {
-                _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                    guard let url else { return }
-                    Task { await viewModel.addAttachment(fileURL: url) }
+            // Same sequential-attach reasoning as the file importer above: resolve
+            // every dropped provider's URL first (fine to do concurrently, it's
+            // just reading the URL), then attach them one at a time so the size
+            // cap sees each prior file in the same drop before checking the next.
+            Task {
+                var urls: [URL] = []
+                for provider in providers {
+                    if let url = await resolveFileURL(from: provider) {
+                        urls.append(url)
+                    }
+                }
+                for url in urls {
+                    await viewModel.addAttachment(fileURL: url)
                 }
             }
             return true
@@ -205,6 +219,14 @@ struct ChatView: View {
                 proxy.scrollTo("streaming", anchor: .bottom)
             } else if let lastID = viewModel.messages.last?.id {
                 proxy.scrollTo(lastID, anchor: .bottom)
+            }
+        }
+    }
+
+    private func resolveFileURL(from provider: NSItemProvider) async -> URL? {
+        await withCheckedContinuation { continuation in
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                continuation.resume(returning: url)
             }
         }
     }

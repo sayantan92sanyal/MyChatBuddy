@@ -74,7 +74,10 @@ final class ChatViewModel {
     }
 
     func addAttachment(fileURL: URL) async {
-        guard !isStreaming else { return }
+        guard !isStreaming else {
+            attachmentError = "Wait for the current response to finish before attaching files."
+            return
+        }
         attachmentError = nil
 
         let extractedText: String

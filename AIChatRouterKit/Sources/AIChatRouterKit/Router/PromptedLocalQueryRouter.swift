@@ -74,12 +74,17 @@ public struct PromptedLocalQueryRouter: QueryRouter, Sendable {
 
         \(biasNote)
 
-        Respond with exactly one word on the first line: LOCAL, FAST, or ADVANCED. \
-        Optionally add a short reason on a second line.
+        Respond with exactly one word on the first line: LOCAL, FAST, or ADVANCED. If the \
+        query also needs current or external information you don't already have (e.g. \
+        today's news, current prices, recent events, anything time-sensitive), add the \
+        word SEARCH right after it on the same line, separated by a space (e.g. "FAST \
+        SEARCH"). Optionally add a short reason on a second line.
         """
     }
 
-    private static func parse(response: String, latencyMS: Int) -> RoutingDecision {
+    /// `internal` (not `private`) so tests can exercise the parsing logic directly,
+    /// matching the pattern used by `SSEClient.parse`/`SSEClient.lines`.
+    static func parse(response: String, latencyMS: Int) -> RoutingDecision {
         let lines = response.split(separator: "\n", maxSplits: 1).map(String.init)
         let firstLine = (lines.first ?? "").uppercased()
         let reasoning = lines.count > 1 ? lines[1].trimmingCharacters(in: .whitespaces) : nil
@@ -93,6 +98,8 @@ public struct PromptedLocalQueryRouter: QueryRouter, Sendable {
             tier = .local
         }
 
-        return RoutingDecision(tier: tier, reasoning: reasoning, latencyMS: latencyMS)
+        let needsWebSearch = firstLine.contains("SEARCH")
+
+        return RoutingDecision(tier: tier, reasoning: reasoning, latencyMS: latencyMS, needsWebSearch: needsWebSearch)
     }
 }

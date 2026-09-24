@@ -17,6 +17,7 @@ final class AppEnvironment {
     let messageStore: MessageStore
     let routingLogStore: RoutingLogStore
     let usageStore: UsageStore
+    let attachmentStore: AttachmentStore
 
     let localModelManager: LocalModelManager
     let settingsStore: AppSettingsStore
@@ -38,6 +39,7 @@ final class AppEnvironment {
         self.messageStore = MessageStore(database: database)
         self.routingLogStore = RoutingLogStore(database: database)
         self.usageStore = UsageStore(database: database)
+        self.attachmentStore = AttachmentStore(database: database)
         self.settingsStore = AppSettingsStore()
 
         let localModelManager = LocalModelManager()

@@ -14,6 +14,8 @@ final class ChatViewModel {
     private(set) var routingNote: String?
     private(set) var usageWarning: String?
     private(set) var pendingSearchPermission = false
+    private(set) var attachments: [Attachment] = []
+    private(set) var attachmentError: String?
 
     private let conversationStore: ConversationStore
     private let messageStore: MessageStore
@@ -21,11 +23,19 @@ final class ChatViewModel {
     private let providerRegistry: ProviderRegistry
     private let usageLimiter: UsageLimiter
     private let settingsStore: AppSettingsStore
+    private let attachmentStore: AttachmentStore
 
     private struct PendingSend {
         let turns: [ChatTurn]
     }
     private var pendingSend: PendingSend?
+
+    private var attachmentsSystemPrompt: String? {
+        guard !attachments.isEmpty else { return nil }
+        let sections = attachments.map { "--- \($0.filename) ---\n\($0.extractedText)" }
+        return "The user has attached the following file(s) — use their content to answer questions about them:\n\n"
+            + sections.joined(separator: "\n\n")
+    }
 
     init(
         conversation: Conversation,
@@ -34,7 +44,8 @@ final class ChatViewModel {
         routingCoordinator: RoutingCoordinator,
         providerRegistry: ProviderRegistry,
         usageLimiter: UsageLimiter,
-        settingsStore: AppSettingsStore
+        settingsStore: AppSettingsStore,
+        attachmentStore: AttachmentStore
     ) {
         self.conversation = conversation
         self.conversationStore = conversationStore
@@ -43,6 +54,7 @@ final class ChatViewModel {
         self.providerRegistry = providerRegistry
         self.usageLimiter = usageLimiter
         self.settingsStore = settingsStore
+        self.attachmentStore = attachmentStore
     }
 
     func loadMessages() async {
@@ -50,6 +62,71 @@ final class ChatViewModel {
             messages = try await messageStore.messages(for: conversation.id)
         } catch {
             errorMessage = "Failed to load messages: \(error.localizedDescription)"
+        }
+    }
+
+    func loadAttachments() async {
+        do {
+            attachments = try await attachmentStore.attachments(for: conversation.id)
+        } catch {
+            attachmentError = "Failed to load attachments: \(error.localizedDescription)"
+        }
+    }
+
+    func addAttachment(fileURL: URL) async {
+        guard !isStreaming else { return }
+        attachmentError = nil
+
+        let extractedText: String
+        do {
+            extractedText = try await FileTextExtractor().extractText(from: fileURL)
+        } catch AttachmentError.unreadableAsText {
+            attachmentError = "\(fileURL.lastPathComponent): couldn't read this as text."
+            return
+        } catch AttachmentError.extractionFailed(let reason) {
+            attachmentError = "\(fileURL.lastPathComponent): \(reason)"
+            return
+        } catch {
+            attachmentError = "\(fileURL.lastPathComponent): \(error.localizedDescription)"
+            return
+        }
+
+        guard !AttachmentStore.wouldExceedLimit(existing: attachments, addingLength: extractedText.count) else {
+            let wouldBeTotal = AttachmentStore.combinedLength(of: attachments) + extractedText.count
+            attachmentError = "\(fileURL.lastPathComponent) would push attachments to \(wouldBeTotal) characters, over the \(AttachmentStore.combinedCharacterLimit)-character limit for this conversation."
+            return
+        }
+
+        let sizeBytes: Int
+        if let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+           let fileSize = attributes[.size] as? Int {
+            sizeBytes = fileSize
+        } else {
+            sizeBytes = extractedText.utf8.count
+        }
+
+        let attachment = Attachment(
+            conversationID: conversation.id,
+            filename: fileURL.lastPathComponent,
+            fileType: fileURL.pathExtension,
+            extractedText: extractedText,
+            sizeBytes: sizeBytes
+        )
+
+        do {
+            try await attachmentStore.append(attachment)
+            attachments.append(attachment)
+        } catch {
+            attachmentError = "Failed to save \(fileURL.lastPathComponent): \(error.localizedDescription)"
+        }
+    }
+
+    func removeAttachment(_ id: UUID) async {
+        do {
+            try await attachmentStore.delete(id: id)
+            attachments.removeAll { $0.id == id }
+        } catch {
+            attachmentError = "Failed to remove attachment: \(error.localizedDescription)"
         }
     }
 
@@ -209,7 +286,7 @@ final class ChatViewModel {
             var finalCitations: [SearchCitation]?
             let stream = provider.streamCompletion(
                 model: modelDescriptor,
-                systemPrompt: nil,
+                systemPrompt: attachmentsSystemPrompt,
                 turns: turns,
                 maxOutputTokens: 1024,
                 enableWebSearch: enableWebSearch

@@ -20,7 +20,8 @@ struct ChatView: View {
             routingCoordinator: environment.routingCoordinator,
             providerRegistry: environment.providerRegistry,
             usageLimiter: environment.usageLimiter,
-            settingsStore: environment.settingsStore
+            settingsStore: environment.settingsStore,
+            attachmentStore: environment.attachmentStore
         ))
     }
 

@@ -31,7 +31,8 @@ let package = Package(
         ),
         .testTarget(
             name: "AIChatRouterKitTests",
-            dependencies: ["AIChatRouterKit"]
+            dependencies: ["AIChatRouterKit"],
+            resources: [.copy("Fixtures")]
         )
     ]
 )

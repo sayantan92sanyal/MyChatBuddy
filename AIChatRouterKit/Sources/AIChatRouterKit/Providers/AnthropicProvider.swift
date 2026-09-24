@@ -3,6 +3,13 @@ import Foundation
 /// Hand-rolled client for the Anthropic Messages API streaming endpoint. No official
 /// Swift SDK exists, and per-call token usage (core IP, feeds the UsageLimiter) is
 /// safer to own directly than to depend on an unofficial wrapper.
+///
+/// Web search support (`web_search_20250305` tool) was verified live against the real
+/// API during v2 planning: search results arrive as a `web_search_tool_result` content
+/// block (the full raw hit list — not surfaced to the user), and the sources the model
+/// actually drew from arrive as `citations_delta` events attached to the text it
+/// generates. This provider surfaces the latter (what was cited), not the former (every
+/// raw hit), matching the spec's "Sources" list being what was actually used.
 public struct AnthropicProvider: LLMProvider, Sendable {
     public static let apiKeyAccount = "anthropic-api-key"
 
@@ -58,13 +65,17 @@ public struct AnthropicProvider: LLMProvider, Sendable {
                         stream: true,
                         messages: turns.filter { $0.role != .system }.map {
                             AnthropicMessage(role: $0.role == .user ? "user" : "assistant", content: $0.content)
-                        }
+                        },
+                        tools: enableWebSearch
+                            ? [AnthropicTool(type: "web_search_20250305", name: "web_search", maxUses: 5)]
+                            : nil
                     )
                     request.httpBody = try JSONEncoder().encode(body)
 
                     let start = Date()
                     var inputTokens = 0
                     var outputTokens = 0
+                    var citationsSeen: [String: SearchCitation] = [:]
 
                     for try await event in sseClient.events(for: request, session: session) {
                         guard let jsonData = event.data.data(using: .utf8) else { continue }
@@ -76,6 +87,9 @@ public struct AnthropicProvider: LLMProvider, Sendable {
                         case "content_block_delta":
                             if let text = decoded.delta?.text, !text.isEmpty {
                                 continuation.yield(ProviderStreamChunk(deltaText: text))
+                            }
+                            if let citation = decoded.delta?.citation, let url = citation.url {
+                                citationsSeen[url] = SearchCitation(url: url, title: citation.title)
                             }
                         case "message_start":
                             if let usage = decoded.message?.usage {
@@ -99,7 +113,8 @@ public struct AnthropicProvider: LLMProvider, Sendable {
                         deltaText: "",
                         isFinal: true,
                         usage: TokenUsage(inputTokens: inputTokens, outputTokens: outputTokens),
-                        latencyMS: latencyMS
+                        latencyMS: latencyMS,
+                        citations: citationsSeen.isEmpty ? nil : Array(citationsSeen.values)
                     ))
                     continuation.finish()
                 } catch {
@@ -116,15 +131,27 @@ private struct AnthropicMessage: Codable {
     let content: String
 }
 
+private struct AnthropicTool: Codable {
+    let type: String
+    let name: String
+    let maxUses: Int
+
+    enum CodingKeys: String, CodingKey {
+        case type, name
+        case maxUses = "max_uses"
+    }
+}
+
 private struct AnthropicRequestBody: Codable {
     let model: String
     let maxTokens: Int
     let system: String?
     let stream: Bool
     let messages: [AnthropicMessage]
+    let tools: [AnthropicTool]?
 
     enum CodingKeys: String, CodingKey {
-        case model, system, stream, messages
+        case model, system, stream, messages, tools
         case maxTokens = "max_tokens"
     }
 }
@@ -138,6 +165,12 @@ private struct AnthropicStreamEvent: Codable {
 
     struct Delta: Codable {
         let text: String?
+        let citation: Citation?
+    }
+
+    struct Citation: Codable {
+        let url: String?
+        let title: String?
     }
 
     struct MessageStart: Codable {

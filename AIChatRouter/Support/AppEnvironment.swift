@@ -108,7 +108,8 @@ final class AppEnvironment {
             ),
             logStore: routingLogStore,
             usageLimiter: usageLimiter,
-            networkStatus: NWPathMonitorNetworkStatus()
+            networkStatus: NWPathMonitorNetworkStatus(),
+            settingsStore: settingsStore
         )
     }
 

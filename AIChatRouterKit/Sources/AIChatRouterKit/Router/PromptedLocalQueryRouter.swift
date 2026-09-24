@@ -88,16 +88,21 @@ public struct PromptedLocalQueryRouter: QueryRouter, Sendable {
         let firstLine = (lines.first ?? "").uppercased()
         let reasoning = lines.count > 1 ? lines[1].trimmingCharacters(in: .whitespaces) : nil
 
+        // Whole-word matching, not substring: a bare `.contains("SEARCH")` would
+        // also match "RESEARCH", which the model can plausibly write on the first
+        // line itself under the tight 12-token budget (e.g. "ADVANCED - research").
+        let words = Set(firstLine.split(whereSeparator: { !$0.isLetter }).map(String.init))
+
         let tier: ModelTier
-        if firstLine.contains("ADVANCED") {
+        if words.contains("ADVANCED") {
             tier = .cloudAdvanced
-        } else if firstLine.contains("FAST") {
+        } else if words.contains("FAST") {
             tier = .cloudFast
         } else {
             tier = .local
         }
 
-        let needsWebSearch = firstLine.contains("SEARCH")
+        let needsWebSearch = words.contains("SEARCH")
 
         return RoutingDecision(tier: tier, reasoning: reasoning, latencyMS: latencyMS, needsWebSearch: needsWebSearch)
     }

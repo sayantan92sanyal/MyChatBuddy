@@ -264,6 +264,67 @@ struct RoutingCoordinatorTests {
         #expect(decision.downgradedFrom == .cloudFast)
     }
 
+    @Test func webSearchToggleOffForcesLocalEvenForCloudAdvanced() async throws {
+        let db = try AppDatabase.openInMemory()
+        let conversations = ConversationStore(database: db)
+        let logStore = RoutingLogStore(database: db)
+
+        let conversation = Conversation(title: "Test")
+        try await conversations.create(conversation)
+
+        // Same guarantee as the cloudFast case above, but for cloudAdvanced — the
+        // force-to-local check must not be accidentally scoped to only one tier.
+        let router = FakeQueryRouter(decision: RoutingDecision(
+            tier: .cloudAdvanced, latencyMS: 10, needsWebSearch: true
+        ))
+        let coordinator = RoutingCoordinator(
+            router: router,
+            logStore: logStore,
+            usageLimiter: PassthroughUsageLimiter(),
+            networkStatus: FakeNetworkStatus(isOnline: true),
+            settingsStore: settingsStore(webSearchEnabled: false)
+        )
+
+        let context = RoutingContext(conversationID: conversation.id, recentTurns: [], candidateQuery: "search for and deeply analyze today's headline")
+        let decision = await coordinator.decide(context)
+
+        #expect(decision.tier == .local)
+        #expect(decision.needsWebSearch == false)
+        #expect(decision.requiresSearchPermission == false)
+        #expect(decision.downgradedFrom == .cloudAdvanced)
+    }
+
+    @Test func toggleOffReasonWinsOverOfflineWhenBothApply() async throws {
+        let db = try AppDatabase.openInMemory()
+        let conversations = ConversationStore(database: db)
+        let logStore = RoutingLogStore(database: db)
+
+        let conversation = Conversation(title: "Test")
+        try await conversations.create(conversation)
+
+        // Toggle-off already forced the tier to .local before the offline check
+        // even runs, so offline has nothing left to force or suppress — the more
+        // accurate, more relevant reason (search is off) should be what's shown,
+        // not an offline note that isn't actually why this stayed local.
+        let router = FakeQueryRouter(decision: RoutingDecision(
+            tier: .cloudFast, latencyMS: 10, needsWebSearch: true
+        ))
+        let coordinator = RoutingCoordinator(
+            router: router,
+            logStore: logStore,
+            usageLimiter: PassthroughUsageLimiter(),
+            networkStatus: FakeNetworkStatus(isOnline: false),
+            settingsStore: settingsStore(webSearchEnabled: false)
+        )
+
+        let context = RoutingContext(conversationID: conversation.id, recentTurns: [], candidateQuery: "what's a notable headline today")
+        let decision = await coordinator.decide(context)
+
+        #expect(decision.tier == .local)
+        #expect(decision.requiresSearchPermission == false)
+        #expect(decision.downgradeReason?.contains("Web search is off") == true)
+    }
+
     @Test func capCascadeConflictingWithSearchNeedOffersCloudFastNotOriginalTier() async throws {
         let db = try AppDatabase.openInMemory()
         let conversations = ConversationStore(database: db)
@@ -356,5 +417,35 @@ struct RoutingCoordinatorTests {
         #expect(decision.requiresSearchPermission == false)
         #expect(decision.searchOverrideTier == nil)
         #expect(decision.downgradeReason?.contains("offline") == true)
+    }
+
+    @Test func offlineDoesNotAddDowngradeNoteWhenNothingWasDowngraded() async throws {
+        let db = try AppDatabase.openInMemory()
+        let conversations = ConversationStore(database: db)
+        let logStore = RoutingLogStore(database: db)
+
+        let conversation = Conversation(title: "Test")
+        try await conversations.create(conversation)
+
+        // A plain local-tier, non-search query while offline: nothing was actually
+        // forced or suppressed by being offline (the classifier already said
+        // local, no cap conflict, no search need), so there's nothing to report —
+        // the offline check must not manufacture a downgrade note on every single
+        // message just because networkStatus.isOnline happens to be false.
+        let router = FakeQueryRouter(decision: RoutingDecision(tier: .local, latencyMS: 10))
+        let coordinator = RoutingCoordinator(
+            router: router,
+            logStore: logStore,
+            usageLimiter: PassthroughUsageLimiter(),
+            networkStatus: FakeNetworkStatus(isOnline: false),
+            settingsStore: settingsStore()
+        )
+
+        let context = RoutingContext(conversationID: conversation.id, recentTurns: [], candidateQuery: "hi")
+        let decision = await coordinator.decide(context)
+
+        #expect(decision.tier == .local)
+        #expect(decision.downgradeReason == nil)
+        #expect(decision.requiresSearchPermission == false)
     }
 }

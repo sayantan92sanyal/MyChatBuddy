@@ -83,12 +83,21 @@ public actor RoutingCoordinator {
         // (independent of being offline) while still leaving requiresSearchPermission
         // set — offline must still clear that permission ask, since it's a hard
         // constraint, not a policy choice, regardless of how tier reached .local.
+        // The downgrade note is only set when something was actually forced or
+        // suppressed here — otherwise every message sent while offline would carry
+        // an "you're offline" note even when the query was already local for
+        // unrelated reasons and offline changed nothing about the outcome.
         if await !networkStatus.isOnline {
-            if adjusted.tier != .local {
+            let wasCloudTier = adjusted.tier != .local
+            let hadPendingPermission = adjusted.requiresSearchPermission
+
+            if wasCloudTier {
                 adjusted.downgradedFrom = adjusted.downgradedFrom ?? adjusted.tier
                 adjusted.tier = .local
             }
-            adjusted.downgradeReason = "You're offline — routed to the local model"
+            if wasCloudTier || hadPendingPermission {
+                adjusted.downgradeReason = "You're offline — routed to the local model"
+            }
             adjusted.requiresSearchPermission = false
             adjusted.searchOverrideTier = nil
         }

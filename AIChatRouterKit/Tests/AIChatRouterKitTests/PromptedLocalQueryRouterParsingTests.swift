@@ -39,4 +39,17 @@ struct PromptedLocalQueryRouterParsingTests {
         #expect(decision.tier == .cloudFast)
         #expect(decision.needsWebSearch == true)
     }
+
+    @Test func researchOnFirstLineDoesNotFalselySetSearchFlag() {
+        // "SEARCH" must match as a whole word, not as a substring of "RESEARCH" —
+        // within the tight 12-token budget the model can plausibly write
+        // "ADVANCED - research-heavy" on the first line itself, and that must not
+        // be mistaken for the SEARCH token.
+        let decision = PromptedLocalQueryRouter.parse(
+            response: "ADVANCED - research-heavy",
+            latencyMS: 5
+        )
+        #expect(decision.tier == .cloudAdvanced)
+        #expect(decision.needsWebSearch == false)
+    }
 }

@@ -64,12 +64,22 @@ public struct AppSettingsStore: @unchecked Sendable {
         defaults.set(enabled, forKey: webSearchEnabledKey)
     }
 
+    /// Ceiling on the user-configurable attachment size cap. Routing is
+    /// deliberately attachment-blind (see spec), so an oversized attachment can
+    /// still be sent to the local model, whose context window is far smaller
+    /// than any cloud model's — an unbounded setting risks memory pressure or a
+    /// crash in the local provider. 2,000,000 characters comfortably covers real
+    /// large documents (a 620,000-character PDF was the case that motivated
+    /// making this configurable) while still rejecting a wildly mistyped value.
+    public static let maxAttachmentSizeCapCharacters = 2_000_000
+
     public func loadAttachmentSizeCapCharacters() -> Int {
         let value = defaults.integer(forKey: attachmentSizeCapKey)
         return value > 0 ? value : AttachmentStore.defaultCharacterLimit
     }
 
     public func saveAttachmentSizeCapCharacters(_ value: Int) {
-        defaults.set(value, forKey: attachmentSizeCapKey)
+        let clamped = min(value, Self.maxAttachmentSizeCapCharacters)
+        defaults.set(clamped, forKey: attachmentSizeCapKey)
     }
 }

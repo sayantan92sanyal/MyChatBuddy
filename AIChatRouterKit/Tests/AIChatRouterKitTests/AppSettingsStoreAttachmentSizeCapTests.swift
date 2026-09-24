@@ -27,4 +27,21 @@ struct AppSettingsStoreAttachmentSizeCapTests {
         store.saveAttachmentSizeCapCharacters(0)
         #expect(store.loadAttachmentSizeCapCharacters() == AttachmentStore.defaultCharacterLimit)
     }
+
+    @Test func saveClampsToTheMaximumAllowedValue() {
+        // Routing is attachment-blind (by design), so an oversized attachment can
+        // still reach the local model, whose context window is far smaller than
+        // any cloud model's — an unbounded setting risks memory pressure/a crash
+        // in the local provider. A huge or mistyped value (extra zeros) is
+        // clamped rather than accepted as-is.
+        let store = makeStore()
+        store.saveAttachmentSizeCapCharacters(AppSettingsStore.maxAttachmentSizeCapCharacters + 1_000_000)
+        #expect(store.loadAttachmentSizeCapCharacters() == AppSettingsStore.maxAttachmentSizeCapCharacters)
+    }
+
+    @Test func saveAllowsExactlyTheMaximumAllowedValue() {
+        let store = makeStore()
+        store.saveAttachmentSizeCapCharacters(AppSettingsStore.maxAttachmentSizeCapCharacters)
+        #expect(store.loadAttachmentSizeCapCharacters() == AppSettingsStore.maxAttachmentSizeCapCharacters)
+    }
 }

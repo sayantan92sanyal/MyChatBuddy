@@ -32,6 +32,9 @@ struct LimitsSettingsView: View {
             Section("Attachments") {
                 TextField("Max combined size (characters)", text: $viewModel.attachmentSizeCapCharacters)
                     .onSubmit { viewModel.save() }
+                Text("Leave blank or 0 to use the default (\(AttachmentStore.defaultCharacterLimit)). Large values may exceed the local model's context window and increase per-message cost on cloud tiers.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             Button("Save") { viewModel.save() }

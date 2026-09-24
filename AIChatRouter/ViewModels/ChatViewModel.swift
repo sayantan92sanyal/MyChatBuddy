@@ -92,8 +92,12 @@ final class ChatViewModel {
             ChatTurn(role: ChatTurn.Role(rawValue: $0.role.rawValue) ?? .user, content: $0.content)
         }
 
+        // Only offer the permission banner if the override tier's provider can
+        // actually search — otherwise Allow would spend a cloud call that can't
+        // deliver what the banner promised.
         if decision.requiresSearchPermission, let overrideTier = decision.searchOverrideTier,
-           providerRegistry.resolve(tier: overrideTier) != nil {
+           let overrideResolved = providerRegistry.resolve(tier: overrideTier),
+           overrideResolved.provider.supportsWebSearch {
             pendingSend = PendingSend(turns: turns)
             pendingSearchPermission = true
             isStreaming = false
@@ -108,7 +112,14 @@ final class ChatViewModel {
             return
         }
 
-        let enableWebSearch = decision.needsWebSearch && decision.tier != .local
+        var enableWebSearch = decision.needsWebSearch && decision.tier != .local
+        if enableWebSearch, !resolved.provider.supportsWebSearch {
+            // The tier's configured provider can't search (e.g. cloudFast mapped
+            // to a provider without search wiring yet) — proceed without search
+            // rather than silently pretending it happened, but say so.
+            enableWebSearch = false
+            routingNote = routingNote ?? "\(resolved.descriptor.displayName) can't search yet — answering without live search."
+        }
         await performSend(
             provider: resolved.provider,
             modelDescriptor: resolved.descriptor,
@@ -133,6 +144,13 @@ final class ChatViewModel {
 
         guard let resolved = providerRegistry.resolve(tier: .cloudFast) else {
             errorMessage = "No provider is configured for the cloudFast tier."
+            return
+        }
+
+        // Defensive re-check: the tier mapping could have changed to a
+        // non-search provider between the banner appearing and this click.
+        guard resolved.provider.supportsWebSearch else {
+            await denySearchOverrideWithoutConsumingPending(turns: pending.turns)
             return
         }
 

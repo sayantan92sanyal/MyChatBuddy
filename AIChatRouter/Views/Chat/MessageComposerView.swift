@@ -4,9 +4,17 @@ struct MessageComposerView: View {
     @Binding var text: String
     var isSending: Bool
     var onSend: () -> Void
+    var onAttach: () -> Void
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
+            Button(action: onAttach) {
+                Image(systemName: "paperclip")
+            }
+            .buttonStyle(.plain)
+            .disabled(isSending)
+            .help("Attach a file")
+
             TextField("Message", text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...6)

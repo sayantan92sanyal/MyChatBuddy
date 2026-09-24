@@ -1,9 +1,11 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import AIChatRouterKit
 
 struct ChatView: View {
     @State private var viewModel: ChatViewModel
     @State private var webSearchEnabled: Bool
+    @State private var showingFileImporter = false
     private let conversationTitle: String
     private let displayName: (String) -> String
     private let settingsStore: AppSettingsStore
@@ -23,6 +25,12 @@ struct ChatView: View {
             settingsStore: environment.settingsStore,
             attachmentStore: environment.attachmentStore
         ))
+    }
+
+    private var attachmentContentTypes: [UTType] {
+        var types: [UTType] = [.plainText, .pdf, .sourceCode, .text]
+        if let docx = UTType(filenameExtension: "docx") { types.append(docx) }
+        return types
     }
 
     var body: some View {
@@ -63,6 +71,10 @@ struct ChatView: View {
                 }
             }
 
+            if !viewModel.attachments.isEmpty {
+                attachmentChips
+            }
+
             if viewModel.pendingSearchPermission {
                 searchPermissionBanner
             }
@@ -88,12 +100,20 @@ struct ChatView: View {
                     .padding(.horizontal)
             }
 
+            if let attachmentError = viewModel.attachmentError {
+                Text(attachmentError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal)
+            }
+
             Divider()
 
             MessageComposerView(
                 text: $viewModel.draftText,
                 isSending: viewModel.isStreaming,
-                onSend: { Task { await viewModel.sendMessage() } }
+                onSend: { Task { await viewModel.sendMessage() } },
+                onAttach: { showingFileImporter = true }
             )
         }
         .navigationTitle(conversationTitle)
@@ -108,8 +128,59 @@ struct ChatView: View {
                 .help(webSearchEnabled ? "Web search: On" : "Web search: Off")
             }
         }
+        .fileImporter(
+            isPresented: $showingFileImporter,
+            allowedContentTypes: attachmentContentTypes,
+            allowsMultipleSelection: true
+        ) { result in
+            guard case .success(let urls) = result else { return }
+            for url in urls {
+                let didAccess = url.startAccessingSecurityScopedResource()
+                Task {
+                    await viewModel.addAttachment(fileURL: url)
+                    if didAccess { url.stopAccessingSecurityScopedResource() }
+                }
+            }
+        }
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            for provider in providers {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url else { return }
+                    Task { await viewModel.addAttachment(fileURL: url) }
+                }
+            }
+            return true
+        }
         .task {
             await viewModel.loadMessages()
+            await viewModel.loadAttachments()
+        }
+    }
+
+    private var attachmentChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(viewModel.attachments) { attachment in
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.text")
+                        Text(attachment.filename)
+                            .font(.caption)
+                            .lineLimit(1)
+                        Button {
+                            Task { await viewModel.removeAttachment(attachment.id) }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.15), in: Capsule())
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top, 6)
         }
     }
 

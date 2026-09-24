@@ -13,6 +13,7 @@ final class ChatViewModel {
     private(set) var errorMessage: String?
     private(set) var routingNote: String?
     private(set) var usageWarning: String?
+    private(set) var pendingSearchPermission = false
 
     private let conversationStore: ConversationStore
     private let messageStore: MessageStore
@@ -20,6 +21,11 @@ final class ChatViewModel {
     private let providerRegistry: ProviderRegistry
     private let usageLimiter: UsageLimiter
     private let settingsStore: AppSettingsStore
+
+    private struct PendingSend {
+        let turns: [ChatTurn]
+    }
+    private var pendingSend: PendingSend?
 
     init(
         conversation: Conversation,
@@ -54,6 +60,8 @@ final class ChatViewModel {
         errorMessage = nil
         routingNote = nil
         usageWarning = nil
+        pendingSearchPermission = false
+        pendingSend = nil
 
         let userMessage = Message(conversationID: conversation.id, role: .user, content: text)
         do {
@@ -76,19 +84,85 @@ final class ChatViewModel {
         )
         let decision = await routingCoordinator.decide(routingContext)
 
+        if let downgradeReason = decision.downgradeReason {
+            routingNote = downgradeReason
+        }
+
+        let turns = messages.map {
+            ChatTurn(role: ChatTurn.Role(rawValue: $0.role.rawValue) ?? .user, content: $0.content)
+        }
+
+        if decision.requiresSearchPermission, let overrideTier = decision.searchOverrideTier,
+           providerRegistry.resolve(tier: overrideTier) != nil {
+            pendingSend = PendingSend(turns: turns)
+            pendingSearchPermission = true
+            isStreaming = false
+            streamingText = ""
+            return
+        }
+
         guard let resolved = providerRegistry.resolve(tier: decision.tier) else {
             errorMessage = "No provider is configured for the \(decision.tier) tier."
             isStreaming = false
             streamingText = ""
             return
         }
-        let provider = resolved.provider
-        let modelDescriptor = resolved.descriptor
 
-        if let downgradeReason = decision.downgradeReason {
-            routingNote = downgradeReason
+        let enableWebSearch = decision.needsWebSearch && decision.tier != .local
+        await performSend(
+            provider: resolved.provider,
+            modelDescriptor: resolved.descriptor,
+            turns: turns,
+            enableWebSearch: enableWebSearch
+        )
+    }
+
+    func allowSearchOverride() async {
+        guard let pending = pendingSend else { return }
+        pendingSearchPermission = false
+        pendingSend = nil
+
+        guard let resolved = providerRegistry.resolve(tier: .cloudFast) else {
+            errorMessage = "No provider is configured for the cloudFast tier."
+            return
         }
 
+        isStreaming = true
+        streamingText = ""
+        await performSend(
+            provider: resolved.provider,
+            modelDescriptor: resolved.descriptor,
+            turns: pending.turns,
+            enableWebSearch: true
+        )
+    }
+
+    func denySearchOverride() async {
+        guard let pending = pendingSend else { return }
+        pendingSearchPermission = false
+        pendingSend = nil
+
+        guard let resolved = providerRegistry.resolve(tier: .local) else {
+            errorMessage = "No provider is configured for the local tier."
+            return
+        }
+
+        isStreaming = true
+        streamingText = ""
+        await performSend(
+            provider: resolved.provider,
+            modelDescriptor: resolved.descriptor,
+            turns: pending.turns,
+            enableWebSearch: false
+        )
+    }
+
+    private func performSend(
+        provider: LLMProvider,
+        modelDescriptor: ProviderModelDescriptor,
+        turns: [ChatTurn],
+        enableWebSearch: Bool
+    ) async {
         if modelDescriptor.providerID != .localMLX, await !provider.isConfigured() {
             errorMessage = "\(modelDescriptor.displayName) needs an API key. Add one in Settings before sending."
             isStreaming = false
@@ -96,18 +170,16 @@ final class ChatViewModel {
             return
         }
 
-        let turns = messages.map {
-            ChatTurn(role: ChatTurn.Role(rawValue: $0.role.rawValue) ?? .user, content: $0.content)
-        }
-
         do {
             var finalUsage: TokenUsage?
             var finalLatency: Int?
+            var finalCitations: [SearchCitation]?
             let stream = provider.streamCompletion(
                 model: modelDescriptor,
                 systemPrompt: nil,
                 turns: turns,
-                maxOutputTokens: 1024
+                maxOutputTokens: 1024,
+                enableWebSearch: enableWebSearch
             )
             for try await chunk in stream {
                 if !chunk.deltaText.isEmpty {
@@ -116,6 +188,7 @@ final class ChatViewModel {
                 if chunk.isFinal {
                     finalUsage = chunk.usage
                     finalLatency = chunk.latencyMS
+                    finalCitations = chunk.citations
                 }
             }
 
@@ -128,7 +201,8 @@ final class ChatViewModel {
                 tier: modelDescriptor.tier,
                 inputTokens: finalUsage?.inputTokens,
                 outputTokens: finalUsage?.outputTokens,
-                latencyMS: finalLatency
+                latencyMS: finalLatency,
+                citationsJSON: Message.encodeCitations(finalCitations)
             )
             try await messageStore.append(assistantMessage)
             messages.append(assistantMessage)

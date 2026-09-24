@@ -99,6 +99,12 @@ public struct AppDatabase: Sendable {
             )
         }
 
+        migrator.registerMigration("v2") { db in
+            try db.alter(table: "message") { t in
+                t.add(column: "citationsJSON", .text)
+            }
+        }
+
         return migrator
     }
 }

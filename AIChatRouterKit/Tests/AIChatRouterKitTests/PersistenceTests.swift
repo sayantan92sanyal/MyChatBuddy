@@ -60,6 +60,44 @@ struct PersistenceTests {
         #expect(fetched.last?.providerID == .localMLX)
     }
 
+    @Test func messageCitationsRoundTripThroughEncodeAndPersistence() async throws {
+        let db = try AppDatabase.openInMemory()
+        let conversations = ConversationStore(database: db)
+        let messages = MessageStore(database: db)
+
+        let conversation = Conversation(title: "Citations Test")
+        try await conversations.create(conversation)
+
+        let citations = [
+            SearchCitation(url: "https://example.com/a", title: "Article A"),
+            SearchCitation(url: "https://example.com/b", title: nil)
+        ]
+        let message = Message(
+            conversationID: conversation.id,
+            role: .assistant,
+            content: "Answer with sources",
+            citationsJSON: Message.encodeCitations(citations)
+        )
+        try await messages.append(message)
+
+        let fetched = try await messages.messages(for: conversation.id)
+        let decoded = Message.decodeCitations(fetched.first?.citationsJSON)
+        #expect(decoded?.count == 2)
+        #expect(decoded?.first?.url == "https://example.com/a")
+        #expect(decoded?.first?.title == "Article A")
+        #expect(decoded?.last?.title == nil)
+    }
+
+    @Test func encodeCitationsReturnsNilForEmptyOrNilInput() {
+        #expect(Message.encodeCitations(nil) == nil)
+        #expect(Message.encodeCitations([]) == nil)
+    }
+
+    @Test func decodeCitationsReturnsNilForNilOrMalformedInput() {
+        #expect(Message.decodeCitations(nil) == nil)
+        #expect(Message.decodeCitations("not json") == nil)
+    }
+
     @Test func routingDecisionsAreLoggedAndQueryable() async throws {
         let db = try AppDatabase.openInMemory()
         let conversations = ConversationStore(database: db)

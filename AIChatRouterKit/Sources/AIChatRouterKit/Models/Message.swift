@@ -19,6 +19,11 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
     public var inputTokens: Int?
     public var outputTokens: Int?
     public var latencyMS: Int?
+    /// JSON-encoded `[SearchCitation]`, or nil if the response used no web search.
+    /// Stored as plain text (not a join table) since it's a small list always
+    /// fetched alongside the message. Use `encodeCitations`/`decodeCitations` to
+    /// convert at the UI/ViewModel boundary rather than working with raw JSON.
+    public var citationsJSON: String?
 
     public init(
         id: UUID = UUID(),
@@ -31,7 +36,8 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
         tier: ModelTier? = nil,
         inputTokens: Int? = nil,
         outputTokens: Int? = nil,
-        latencyMS: Int? = nil
+        latencyMS: Int? = nil,
+        citationsJSON: String? = nil
     ) {
         self.id = id
         self.conversationID = conversationID
@@ -44,6 +50,18 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.latencyMS = latencyMS
+        self.citationsJSON = citationsJSON
+    }
+
+    public static func encodeCitations(_ citations: [SearchCitation]?) -> String? {
+        guard let citations, !citations.isEmpty else { return nil }
+        guard let data = try? JSONEncoder().encode(citations) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    public static func decodeCitations(_ json: String?) -> [SearchCitation]? {
+        guard let json, let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode([SearchCitation].self, from: data)
     }
 }
 

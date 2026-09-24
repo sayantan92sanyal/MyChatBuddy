@@ -4,6 +4,7 @@ import AIChatRouterKit
 struct MessageBubbleView: View {
     let message: Message
     let displayName: (String) -> String
+    @State private var sourcesExpanded = false
 
     var body: some View {
         HStack {
@@ -19,8 +20,35 @@ struct MessageBubbleView: View {
                         tokenCount: totalTokens
                     )
                 }
+                if let citations = Message.decodeCitations(message.citationsJSON), !citations.isEmpty {
+                    sourcesDisclosure(citations)
+                }
             }
             if message.role != .user { Spacer(minLength: 40) }
+        }
+    }
+
+    private func sourcesDisclosure(_ citations: [SearchCitation]) -> some View {
+        DisclosureGroup(isExpanded: $sourcesExpanded) {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(citations, id: \.url) { citation in
+                    if let url = URL(string: citation.url) {
+                        Link(citation.title ?? citation.url, destination: url)
+                            .font(.caption2)
+                            .lineLimit(1)
+                    } else {
+                        Text(citation.title ?? citation.url)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .padding(.top, 2)
+        } label: {
+            Text("Sources (\(citations.count))")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 

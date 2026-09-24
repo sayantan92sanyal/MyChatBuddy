@@ -3,12 +3,16 @@ import AIChatRouterKit
 
 struct ChatView: View {
     @State private var viewModel: ChatViewModel
+    @State private var webSearchEnabled: Bool
     private let conversationTitle: String
     private let displayName: (String) -> String
+    private let settingsStore: AppSettingsStore
 
     init(conversation: Conversation, environment: AppEnvironment) {
         self.conversationTitle = conversation.title
         self.displayName = environment.displayName(forModelID:)
+        self.settingsStore = environment.settingsStore
+        _webSearchEnabled = State(initialValue: environment.settingsStore.loadWebSearchEnabled())
         _viewModel = State(initialValue: ChatViewModel(
             conversation: conversation,
             conversationStore: environment.conversationStore,
@@ -58,6 +62,10 @@ struct ChatView: View {
                 }
             }
 
+            if viewModel.pendingSearchPermission {
+                searchPermissionBanner
+            }
+
             if let routingNote = viewModel.routingNote {
                 Text(routingNote)
                     .font(.caption)
@@ -88,9 +96,35 @@ struct ChatView: View {
             )
         }
         .navigationTitle(conversationTitle)
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    webSearchEnabled.toggle()
+                    settingsStore.saveWebSearchEnabled(webSearchEnabled)
+                } label: {
+                    Image(systemName: webSearchEnabled ? "globe" : "globe.desk.fill")
+                }
+                .help(webSearchEnabled ? "Web search: On" : "Web search: Off")
+            }
+        }
         .task {
             await viewModel.loadMessages()
         }
+    }
+
+    private var searchPermissionBanner: some View {
+        HStack {
+            Text("This needs web search but you're over budget — allow this one cloud call anyway?")
+                .font(.caption)
+            Spacer()
+            Button("Deny") { Task { await viewModel.denySearchOverride() } }
+                .buttonStyle(.plain)
+            Button("Allow") { Task { await viewModel.allowSearchOverride() } }
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+        .background(Color.orange.opacity(0.15))
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy) {

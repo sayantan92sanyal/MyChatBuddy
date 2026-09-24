@@ -14,6 +14,7 @@ public struct AnthropicProvider: LLMProvider, Sendable {
     public static let apiKeyAccount = "anthropic-api-key"
 
     public let id: ProviderID = .anthropic
+    public let supportsWebSearch = true
 
     private let keychain: KeychainStore
     private let sseClient: SSEClient

@@ -86,6 +86,11 @@ public enum ProviderError: Error, Sendable, Equatable {
 /// The router and chat UI depend only on this protocol — never on a concrete provider.
 public protocol LLMProvider: Sendable {
     var id: ProviderID { get }
+    /// Whether this provider actually performs web search when `enableWebSearch`
+    /// is set — as opposed to silently ignoring the flag. Lets callers warn the
+    /// user instead of spending a cloud call that can't do what it was escalated
+    /// for. Defaults to `false`; only providers with real search wiring return `true`.
+    var supportsWebSearch: Bool { get }
     func isConfigured() async -> Bool
     func streamCompletion(
         model: ProviderModelDescriptor,
@@ -94,4 +99,8 @@ public protocol LLMProvider: Sendable {
         maxOutputTokens: Int,
         enableWebSearch: Bool
     ) -> AsyncThrowingStream<ProviderStreamChunk, Error>
+}
+
+extension LLMProvider {
+    public var supportsWebSearch: Bool { false }
 }

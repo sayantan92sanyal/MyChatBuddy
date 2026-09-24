@@ -105,6 +105,24 @@ public struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v3") { db in
+            try db.create(table: "attachment") { t in
+                t.column("id", .blob).primaryKey()
+                t.column("conversationID", .blob).notNull()
+                    .references("conversation", onDelete: .cascade)
+                t.column("filename", .text).notNull()
+                t.column("fileType", .text).notNull()
+                t.column("extractedText", .text).notNull()
+                t.column("sizeBytes", .integer).notNull()
+                t.column("createdAt", .datetime).notNull()
+            }
+            try db.create(
+                index: "idx_attachment_conversation",
+                on: "attachment",
+                columns: ["conversationID"]
+            )
+        }
+
         return migrator
     }
 }

@@ -40,17 +40,35 @@ public struct TokenUsage: Sendable, Codable, Equatable {
     }
 }
 
+public struct SearchCitation: Sendable, Codable, Equatable, Hashable {
+    public let url: String
+    public let title: String?
+
+    public init(url: String, title: String? = nil) {
+        self.url = url
+        self.title = title
+    }
+}
+
 public struct ProviderStreamChunk: Sendable {
     public let deltaText: String
     public let isFinal: Bool
     public let usage: TokenUsage?
     public let latencyMS: Int?
+    public let citations: [SearchCitation]?
 
-    public init(deltaText: String, isFinal: Bool = false, usage: TokenUsage? = nil, latencyMS: Int? = nil) {
+    public init(
+        deltaText: String,
+        isFinal: Bool = false,
+        usage: TokenUsage? = nil,
+        latencyMS: Int? = nil,
+        citations: [SearchCitation]? = nil
+    ) {
         self.deltaText = deltaText
         self.isFinal = isFinal
         self.usage = usage
         self.latencyMS = latencyMS
+        self.citations = citations
     }
 }
 
@@ -73,6 +91,7 @@ public protocol LLMProvider: Sendable {
         model: ProviderModelDescriptor,
         systemPrompt: String?,
         turns: [ChatTurn],
-        maxOutputTokens: Int
+        maxOutputTokens: Int,
+        enableWebSearch: Bool
     ) -> AsyncThrowingStream<ProviderStreamChunk, Error>
 }

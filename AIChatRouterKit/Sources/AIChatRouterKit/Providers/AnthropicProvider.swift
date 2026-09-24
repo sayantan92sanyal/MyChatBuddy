@@ -34,7 +34,8 @@ public struct AnthropicProvider: LLMProvider, Sendable {
         model: ProviderModelDescriptor,
         systemPrompt: String?,
         turns: [ChatTurn],
-        maxOutputTokens: Int
+        maxOutputTokens: Int,
+        enableWebSearch: Bool
     ) -> AsyncThrowingStream<ProviderStreamChunk, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {

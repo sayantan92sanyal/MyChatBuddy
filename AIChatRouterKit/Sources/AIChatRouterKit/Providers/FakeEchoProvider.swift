@@ -15,7 +15,8 @@ public struct FakeEchoProvider: LLMProvider, Sendable {
         model: ProviderModelDescriptor,
         systemPrompt: String?,
         turns: [ChatTurn],
-        maxOutputTokens: Int
+        maxOutputTokens: Int,
+        enableWebSearch: Bool
     ) -> AsyncThrowingStream<ProviderStreamChunk, Error> {
         let reply = "Echo: " + (turns.last(where: { $0.role == .user })?.content ?? "")
         return AsyncThrowingStream { continuation in

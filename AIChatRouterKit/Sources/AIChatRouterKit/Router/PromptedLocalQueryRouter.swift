@@ -21,18 +21,17 @@ public struct PromptedLocalQueryRouter: QueryRouter, Sendable {
         do {
             let container = try await modelManager.loadedContainer(for: modelID)
 
-            let history: [Chat.Message] = context.recentTurns.map { turn in
-                switch turn.role {
-                case .system: return .system(turn.content)
-                case .user: return .user(turn.content)
-                case .assistant: return .assistant(turn.content)
-                }
-            }
-
+            // Deliberately NOT passing context.recentTurns as ChatSession history: live
+            // testing showed that once this small model sees realistic prior dialogue
+            // turns, it drifts into "continue the conversation" mode and stops reliably
+            // following the classification/SEARCH-detection instructions — even with a
+            // strengthened system prompt telling it to ignore history's topic. An empty
+            // history keeps the classification call isolated and deterministic; only the
+            // answering model (not this classifier) needs the real conversation context.
             let session = ChatSession(
                 container,
                 instructions: Self.systemPrompt(bias: context.sensitivityBias),
-                history: history,
+                history: [],
                 generateParameters: GenerateParameters(maxTokens: 12, temperature: 0)
             )
 

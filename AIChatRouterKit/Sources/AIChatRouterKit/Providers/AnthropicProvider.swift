@@ -98,6 +98,14 @@ public struct AnthropicProvider: LLMProvider, Sendable {
                         case "message_delta":
                             if let usage = decoded.usage {
                                 outputTokens = usage.outputTokens ?? outputTokens
+                                // With web search enabled, the results fed back to the
+                                // model are billed as additional input tokens that only
+                                // show up here — live-verified: message_start reported
+                                // 2227 input tokens for a search query, message_delta's
+                                // final usage reported 8807 once the search results were
+                                // counted. message_start's count alone would have
+                                // undercounted this call by roughly 74%.
+                                inputTokens = usage.inputTokens ?? inputTokens
                             }
                         default:
                             break

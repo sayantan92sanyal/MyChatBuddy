@@ -91,9 +91,10 @@ final class ChatViewModel {
             return
         }
 
-        guard !AttachmentStore.wouldExceedLimit(existing: attachments, addingLength: extractedText.count) else {
+        let sizeCap = settingsStore.loadAttachmentSizeCapCharacters()
+        guard !AttachmentStore.wouldExceedLimit(existing: attachments, addingLength: extractedText.count, limit: sizeCap) else {
             let wouldBeTotal = AttachmentStore.combinedLength(of: attachments) + extractedText.count
-            attachmentError = "\(fileURL.lastPathComponent) would push attachments to \(wouldBeTotal) characters, over the \(AttachmentStore.combinedCharacterLimit)-character limit for this conversation."
+            attachmentError = "\(fileURL.lastPathComponent) would push attachments to \(wouldBeTotal) characters, over the \(sizeCap)-character limit for this conversation."
             return
         }
 

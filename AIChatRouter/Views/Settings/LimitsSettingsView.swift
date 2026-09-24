@@ -29,6 +29,11 @@ struct LimitsSettingsView: View {
                     .onSubmit { viewModel.save() }
             }
 
+            Section("Attachments") {
+                TextField("Max combined size (characters)", text: $viewModel.attachmentSizeCapCharacters)
+                    .onSubmit { viewModel.save() }
+            }
+
             Button("Save") { viewModel.save() }
 
             Text("Leave a field blank to disable that cap. Hard caps downgrade Advanced → Fast → Local rather than blocking the request.")

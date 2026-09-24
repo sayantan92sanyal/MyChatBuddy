@@ -10,6 +10,7 @@ final class LimitsSettingsViewModel {
     var monthlyBudgetUSD: String = ""
     var cloudFastDailyCallCap: String = ""
     var cloudAdvancedDailyCallCap: String = ""
+    var attachmentSizeCapCharacters: String = ""
 
     private let settingsStore: AppSettingsStore
 
@@ -21,6 +22,7 @@ final class LimitsSettingsViewModel {
         monthlyBudgetUSD = config.monthlyBudgetUSD.map { String($0) } ?? ""
         cloudFastDailyCallCap = config.perTierDailyCallCap[.cloudFast].map(String.init) ?? ""
         cloudAdvancedDailyCallCap = config.perTierDailyCallCap[.cloudAdvanced].map(String.init) ?? ""
+        attachmentSizeCapCharacters = String(settingsStore.loadAttachmentSizeCapCharacters())
     }
 
     func save() {
@@ -35,5 +37,9 @@ final class LimitsSettingsViewModel {
             perTierDailyCallCap: perTierDailyCallCap
         )
         settingsStore.saveLimiterConfig(config)
+
+        if let value = Int(attachmentSizeCapCharacters) {
+            settingsStore.saveAttachmentSizeCapCharacters(value)
+        }
     }
 }

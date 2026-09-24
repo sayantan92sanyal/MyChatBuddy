@@ -122,6 +122,15 @@ final class ChatViewModel {
         pendingSearchPermission = false
         pendingSend = nil
 
+        // Re-read the toggle rather than trusting that it's still on: it could
+        // have been switched off in the moment between the banner appearing and
+        // the user clicking Allow, and Allow must never enable search once the
+        // toggle says not to — that's the whole point of the toggle.
+        guard settingsStore.loadWebSearchEnabled() else {
+            await denySearchOverrideWithoutConsumingPending(turns: pending.turns)
+            return
+        }
+
         guard let resolved = providerRegistry.resolve(tier: .cloudFast) else {
             errorMessage = "No provider is configured for the cloudFast tier."
             return
@@ -141,7 +150,13 @@ final class ChatViewModel {
         guard let pending = pendingSend else { return }
         pendingSearchPermission = false
         pendingSend = nil
+        await denySearchOverrideWithoutConsumingPending(turns: pending.turns)
+    }
 
+    /// Shared by `denySearchOverride()` and `allowSearchOverride()`'s toggle-off
+    /// fallback — both send via the local tier with search disabled once the
+    /// caller has already cleared `pendingSend`/`pendingSearchPermission` itself.
+    private func denySearchOverrideWithoutConsumingPending(turns: [ChatTurn]) async {
         guard let resolved = providerRegistry.resolve(tier: .local) else {
             errorMessage = "No provider is configured for the local tier."
             return
@@ -152,7 +167,7 @@ final class ChatViewModel {
         await performSend(
             provider: resolved.provider,
             modelDescriptor: resolved.descriptor,
-            turns: pending.turns,
+            turns: turns,
             enableWebSearch: false
         )
     }
@@ -190,6 +205,18 @@ final class ChatViewModel {
                     finalLatency = chunk.latencyMS
                     finalCitations = chunk.citations
                 }
+            }
+
+            // A stream that ends without throwing but produced no text (e.g. a
+            // provider-side tool/search failure surfaced as a quiet empty
+            // response rather than a thrown error) must not be saved as a blank
+            // assistant message — that's indistinguishable from a real answer in
+            // the transcript and leaves the user with no idea anything went wrong.
+            guard !streamingText.isEmpty else {
+                errorMessage = "Response failed: the model returned an empty reply."
+                isStreaming = false
+                streamingText = ""
+                return
             }
 
             let assistantMessage = Message(

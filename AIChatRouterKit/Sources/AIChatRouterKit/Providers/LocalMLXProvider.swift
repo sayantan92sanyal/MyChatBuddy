@@ -34,7 +34,7 @@ public struct LocalMLXProvider: LLMProvider, Sendable {
                         throw ProviderError.modelNotReady
                     }
 
-                    let container = try await modelManager.loadedContainer(for: modelID)
+                    let container = try await modelManager.loadedContainer(for: modelID, kind: .text)
 
                     let history: [Chat.Message] = turns.dropLast().map { turn in
                         switch turn.role {

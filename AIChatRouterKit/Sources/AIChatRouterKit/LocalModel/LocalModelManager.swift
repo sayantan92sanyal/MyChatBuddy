@@ -1,9 +1,13 @@
 import Foundation
 import MLXLLM
+import MLXVLM
 import MLXLMCommon
 
 /// Downloads (via `HubClientDownloader`, into the shared HF cache) and loads MLX models,
 /// caching the resulting `ModelContainer` per model id for the lifetime of the app.
+/// Serves both local slots (text via `LLMModelFactory`, vision via `VLMModelFactory`) —
+/// both factories produce the same `ModelContainer` type, so one manager/cache serves
+/// both; `kind` only selects which factory populates it.
 public actor LocalModelManager {
     public enum ModelState: Sendable, Equatable {
         case notDownloaded
@@ -33,6 +37,7 @@ public actor LocalModelManager {
     /// Subsequent calls for the same model id return the cached container immediately.
     public func loadedContainer(
         for modelID: String,
+        kind: LocalModelOption.ModelKind,
         progressHandler: @Sendable @escaping (Double) -> Void = { _ in }
     ) async throws -> ModelContainer {
         if let existing = containers[modelID] {
@@ -41,7 +46,7 @@ public actor LocalModelManager {
 
         states[modelID] = .downloading(0)
         do {
-            let container = try await LLMModelFactory.shared.loadContainer(
+            let container = try await Self.factory(for: kind).loadContainer(
                 from: downloader,
                 using: tokenizerLoader,
                 configuration: .init(id: modelID),
@@ -57,6 +62,17 @@ public actor LocalModelManager {
         } catch {
             states[modelID] = .failed(error.localizedDescription)
             throw error
+        }
+    }
+
+    /// Pure dispatch, kept as a static func so it's testable by factory identity
+    /// without needing a real download — `LLMModelFactory.shared`/`VLMModelFactory.shared`
+    /// are both singletons of distinct final classes that produce the same
+    /// `ModelContainer` type (verified against the vendored mlx-swift-lm package).
+    static func factory(for kind: LocalModelOption.ModelKind) -> any ModelFactory {
+        switch kind {
+        case .text: return LLMModelFactory.shared
+        case .vision: return VLMModelFactory.shared
         }
     }
 

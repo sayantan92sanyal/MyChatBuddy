@@ -24,6 +24,7 @@ let package = Package(
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "MLXLLM", package: "mlx-swift-lm"),
+                .product(name: "MLXVLM", package: "mlx-swift-lm"),
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
                 .product(name: "HuggingFace", package: "swift-huggingface"),
                 .product(name: "Tokenizers", package: "swift-transformers")
@@ -31,7 +32,11 @@ let package = Package(
         ),
         .testTarget(
             name: "AIChatRouterKitTests",
-            dependencies: ["AIChatRouterKit"],
+            dependencies: [
+                "AIChatRouterKit",
+                .product(name: "MLXLLM", package: "mlx-swift-lm"),
+                .product(name: "MLXVLM", package: "mlx-swift-lm")
+            ],
             resources: [.copy("Fixtures")]
         )
     ]

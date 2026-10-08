@@ -20,17 +20,39 @@ public actor LocalModelManager {
     private var states: [String: ModelState] = [:]
     private let downloader: any Downloader
     private let tokenizerLoader: any TokenizerLoader
+    private let cacheDirectory: URL
 
     public init(
         downloader: any Downloader = HubClientDownloader(),
-        tokenizerLoader: any TokenizerLoader = TransformersTokenizerLoader()
+        tokenizerLoader: any TokenizerLoader = TransformersTokenizerLoader(),
+        cacheDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cache/huggingface/hub")
     ) {
         self.downloader = downloader
         self.tokenizerLoader = tokenizerLoader
+        self.cacheDirectory = cacheDirectory
     }
 
+    /// In-memory state wins; otherwise a model whose weights are already in the
+    /// shared HF cache counts as `.ready` — `states` is empty on every launch, and
+    /// without this a previously downloaded model would read "not downloaded"
+    /// after each relaunch. Loading it is a local read, not a download.
     public func state(for modelID: String) -> ModelState {
-        states[modelID] ?? .notDownloaded
+        if let known = states[modelID] { return known }
+        return isCachedOnDisk(modelID) ? .ready : .notDownloaded
+    }
+
+    private func isCachedOnDisk(_ modelID: String) -> Bool {
+        let snapshots = cacheDirectory
+            .appendingPathComponent("models--" + modelID.replacingOccurrences(of: "/", with: "--"))
+            .appendingPathComponent("snapshots")
+        guard let revisions = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) else { return false }
+        return revisions.contains { revision in
+            let files = (try? FileManager.default.contentsOfDirectory(
+                atPath: snapshots.appendingPathComponent(revision).path
+            )) ?? []
+            return files.contains { $0.hasSuffix(".safetensors") }
+        }
     }
 
     /// Downloads/loads the given model if needed and returns its `ModelContainer`.

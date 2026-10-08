@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import UniformTypeIdentifiers
 import AIChatRouterKit
 
@@ -23,14 +24,39 @@ struct ChatView: View {
             providerRegistry: environment.providerRegistry,
             usageLimiter: environment.usageLimiter,
             settingsStore: environment.settingsStore,
-            attachmentStore: environment.attachmentStore
+            attachmentStore: environment.attachmentStore,
+            imageAttachmentStore: environment.imageAttachmentStore
         ))
     }
 
     private var attachmentContentTypes: [UTType] {
-        var types: [UTType] = [.plainText, .pdf, .sourceCode, .text]
+        var types: [UTType] = [.plainText, .pdf, .sourceCode, .text, .image]
         if let docx = UTType(filenameExtension: "docx") { types.append(docx) }
         return types
+    }
+
+    private func handlePickedFiles(_ urls: [URL]) {
+        let imageURLs = urls.filter { ChatViewModel.isImageFile($0) }
+        let documentURLs = urls.filter { !ChatViewModel.isImageFile($0) }
+
+        Task {
+            if let firstImage = imageURLs.first {
+                let didAccess = firstImage.startAccessingSecurityScopedResource()
+                await viewModel.attachPendingImage(fileURL: firstImage, extraImagesIgnored: imageURLs.count - 1)
+                if didAccess { firstImage.stopAccessingSecurityScopedResource() }
+            }
+
+            // Sequential, same reasoning as before: addAttachment checks the
+            // combined size cap against `attachments` synchronously at the start
+            // of each call, so concurrent attaches could both pass the check
+            // before either is appended, bypassing the cap multi-select is
+            // meant to be checked against.
+            for url in documentURLs {
+                let didAccess = url.startAccessingSecurityScopedResource()
+                await viewModel.addAttachment(fileURL: url)
+                if didAccess { url.stopAccessingSecurityScopedResource() }
+            }
+        }
     }
 
     var body: some View {
@@ -47,12 +73,16 @@ struct ChatView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 12) {
                             ForEach(viewModel.messages) { message in
-                                MessageBubbleView(message: message, displayName: displayName)
-                                    .id(message.id)
+                                MessageBubbleView(
+                                    message: message,
+                                    imageAttachment: viewModel.imageAttachmentsByMessageID[message.id],
+                                    displayName: displayName
+                                )
+                                .id(message.id)
                             }
                             if viewModel.isStreaming {
                                 HStack {
-                                    Text(viewModel.streamingText)
+                                    Text(viewModel.streamingText.isEmpty ? "Thinking…" : viewModel.streamingText)
                                         .padding(10)
                                         .background(Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
                                     Spacer(minLength: 40)
@@ -73,6 +103,10 @@ struct ChatView: View {
 
             if !viewModel.attachments.isEmpty {
                 attachmentChips
+            }
+
+            if let pendingImage = viewModel.pendingImage {
+                pendingImagePreview(pendingImage)
             }
 
             if viewModel.pendingSearchPermission {
@@ -134,24 +168,9 @@ struct ChatView: View {
             allowsMultipleSelection: true
         ) { result in
             guard case .success(let urls) = result else { return }
-            // Attach sequentially, not as separate concurrent Tasks: addAttachment
-            // checks the combined size cap against `attachments` synchronously at
-            // the start of its own call, so two files attached concurrently could
-            // both pass the check before either is appended, bypassing the cap
-            // multi-select is explicitly meant to be checked against.
-            Task {
-                for url in urls {
-                    let didAccess = url.startAccessingSecurityScopedResource()
-                    await viewModel.addAttachment(fileURL: url)
-                    if didAccess { url.stopAccessingSecurityScopedResource() }
-                }
-            }
+            handlePickedFiles(urls)
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-            // Same sequential-attach reasoning as the file importer above: resolve
-            // every dropped provider's URL first (fine to do concurrently, it's
-            // just reading the URL), then attach them one at a time so the size
-            // cap sees each prior file in the same drop before checking the next.
             Task {
                 var urls: [URL] = []
                 for provider in providers {
@@ -159,15 +178,14 @@ struct ChatView: View {
                         urls.append(url)
                     }
                 }
-                for url in urls {
-                    await viewModel.addAttachment(fileURL: url)
-                }
+                handlePickedFiles(urls)
             }
             return true
         }
         .task {
             await viewModel.loadMessages()
             await viewModel.loadAttachments()
+            await viewModel.loadImageAttachments()
         }
     }
 
@@ -196,6 +214,29 @@ struct ChatView: View {
             .padding(.horizontal)
             .padding(.top, 6)
         }
+    }
+
+    private func pendingImagePreview(_ data: Data) -> some View {
+        HStack(spacing: 8) {
+            if let nsImage = NSImage(data: data) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 40, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            Text("Image attached")
+                .font(.caption)
+            Spacer()
+            Button {
+                viewModel.removePendingImage()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.top, 6)
     }
 
     private var searchPermissionBanner: some View {

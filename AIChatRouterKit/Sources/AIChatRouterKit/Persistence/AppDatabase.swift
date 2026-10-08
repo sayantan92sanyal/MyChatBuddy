@@ -123,6 +123,30 @@ public struct AppDatabase: Sendable {
             )
         }
 
+        migrator.registerMigration("v4") { db in
+            try db.create(table: "image_attachment") { t in
+                t.column("id", .blob).primaryKey()
+                t.column("conversationID", .blob).notNull()
+                    .references("conversation", onDelete: .cascade)
+                t.column("messageID", .blob).notNull()
+                    .references("message", onDelete: .cascade)
+                t.column("filename", .text).notNull()
+                t.column("imageData", .blob).notNull()
+                t.column("sizeBytes", .integer).notNull()
+                t.column("createdAt", .datetime).notNull()
+            }
+            try db.create(
+                index: "idx_image_attachment_conversation",
+                on: "image_attachment",
+                columns: ["conversationID"]
+            )
+            try db.create(
+                index: "idx_image_attachment_message",
+                on: "image_attachment",
+                columns: ["messageID"]
+            )
+        }
+
         return migrator
     }
 }

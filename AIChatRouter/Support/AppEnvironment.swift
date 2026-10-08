@@ -18,12 +18,11 @@ final class AppEnvironment {
     let routingLogStore: RoutingLogStore
     let usageStore: UsageStore
     let attachmentStore: AttachmentStore
+    let imageAttachmentStore: ImageAttachmentStore
 
     let localModelManager: LocalModelManager
     let settingsStore: AppSettingsStore
 
-    let providers: [ProviderID: LLMProvider]
-    let localDescriptor: ProviderModelDescriptor
     let cloudFastOptions: [TierProviderOption]
     let cloudAdvancedOptions: [TierProviderOption]
     let defaultTierModelMapping: TierModelMapping
@@ -40,21 +39,13 @@ final class AppEnvironment {
         self.routingLogStore = RoutingLogStore(database: database)
         self.usageStore = UsageStore(database: database)
         self.attachmentStore = AttachmentStore(database: database)
+        self.imageAttachmentStore = ImageAttachmentStore(database: database)
         self.settingsStore = AppSettingsStore()
 
         let localModelManager = LocalModelManager()
         self.localModelManager = localModelManager
 
-        let localDescriptor = ProviderModelDescriptor(
-            id: LocalModelCatalog.default.id,
-            providerID: .localMLX,
-            tier: .local,
-            displayName: "Local"
-        )
-        self.localDescriptor = localDescriptor
-
-        self.providers = [
-            .localMLX: LocalMLXProvider(modelManager: localModelManager, modelID: LocalModelCatalog.default.id),
+        let cloudProviders: [ProviderID: LLMProvider] = [
             .anthropic: AnthropicProvider(),
             .openAI: OpenAIProvider()
         ]
@@ -93,10 +84,12 @@ final class AppEnvironment {
         )
 
         self.providerRegistry = ProviderRegistry(
-            providers: providers,
-            localDescriptor: localDescriptor,
+            cloudProviders: cloudProviders,
+            localModelManager: localModelManager,
             settingsStore: settingsStore,
-            defaultTierModelMapping: defaultTierModelMapping
+            defaultTierModelMapping: defaultTierModelMapping,
+            defaultLocalTextModel: LocalModelCatalog.defaultText,
+            defaultLocalVisionModel: LocalModelCatalog.defaultVision
         )
 
         let usageLimiter = DefaultUsageLimiter(usageStore: usageStore, settingsStore: settingsStore)
@@ -106,7 +99,7 @@ final class AppEnvironment {
         self.routingCoordinator = RoutingCoordinator(
             router: PromptedLocalQueryRouter(
                 modelManager: localModelManager,
-                modelID: LocalModelCatalog.default.id
+                modelID: LocalModelCatalog.defaultText.id
             ),
             logStore: routingLogStore,
             usageLimiter: usageLimiter,
@@ -115,9 +108,13 @@ final class AppEnvironment {
         )
     }
 
-    /// Maps a persisted `Message.modelID` back to a friendly badge label.
+    /// Maps a persisted `Message.modelID` back to a friendly badge label. Checks
+    /// both local catalogs (not just "the" local model) since the active local
+    /// model can change over time — older messages keep whichever model id they
+    /// were actually sent with.
     func displayName(forModelID modelID: String) -> String {
-        if modelID == localDescriptor.id { return localDescriptor.displayName }
+        if let match = LocalModelCatalog.textModels.first(where: { $0.id == modelID }) { return match.displayName }
+        if let match = LocalModelCatalog.visionModels.first(where: { $0.id == modelID }) { return match.displayName }
         if let match = (cloudFastOptions + cloudAdvancedOptions).first(where: { $0.descriptor.id == modelID }) {
             return match.descriptor.displayName
         }

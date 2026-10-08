@@ -9,6 +9,9 @@ public struct AppSettingsStore: @unchecked Sendable {
     private let routingSensitivityKey = "com.sayantan.aichatrouter.routingSensitivity"
     private let webSearchEnabledKey = "com.sayantan.aichatrouter.webSearchEnabled"
     private let attachmentSizeCapKey = "com.sayantan.aichatrouter.attachmentSizeCapCharacters"
+    private let activeLocalTextModelIDKey = "com.sayantan.aichatrouter.activeLocalTextModelID"
+    private let activeLocalVisionModelIDKey = "com.sayantan.aichatrouter.activeLocalVisionModelID"
+    private let imageAttachmentSizeCapKey = "com.sayantan.aichatrouter.imageAttachmentSizeCapBytes"
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -81,5 +84,39 @@ public struct AppSettingsStore: @unchecked Sendable {
     public func saveAttachmentSizeCapCharacters(_ value: Int) {
         let clamped = min(value, Self.maxAttachmentSizeCapCharacters)
         defaults.set(clamped, forKey: attachmentSizeCapKey)
+    }
+
+    public func loadActiveLocalTextModelID(default defaultID: String) -> String {
+        defaults.string(forKey: activeLocalTextModelIDKey) ?? defaultID
+    }
+
+    public func saveActiveLocalTextModelID(_ id: String) {
+        defaults.set(id, forKey: activeLocalTextModelIDKey)
+    }
+
+    public func loadActiveLocalVisionModelID(default defaultID: String) -> String {
+        defaults.string(forKey: activeLocalVisionModelIDKey) ?? defaultID
+    }
+
+    public func saveActiveLocalVisionModelID(_ id: String) {
+        defaults.set(id, forKey: activeLocalVisionModelIDKey)
+    }
+
+    /// Ceiling on the *source* image file, checked before any downscaling —
+    /// downscaling still costs CPU/memory proportional to the source size, so this
+    /// guards against an absurdly large file (e.g. an uncompressed RAW photo) before
+    /// that work even starts. 10MB comfortably covers real photos from any modern
+    /// camera or screenshot.
+    public static let defaultImageAttachmentSizeCapBytes = 10_000_000
+    public static let maxImageAttachmentSizeCapBytes = 50_000_000
+
+    public func loadImageAttachmentSizeCapBytes() -> Int {
+        let value = defaults.integer(forKey: imageAttachmentSizeCapKey)
+        return value > 0 ? value : Self.defaultImageAttachmentSizeCapBytes
+    }
+
+    public func saveImageAttachmentSizeCapBytes(_ value: Int) {
+        let clamped = min(value, Self.maxImageAttachmentSizeCapBytes)
+        defaults.set(clamped, forKey: imageAttachmentSizeCapKey)
     }
 }

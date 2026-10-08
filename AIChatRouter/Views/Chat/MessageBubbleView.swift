@@ -1,9 +1,11 @@
 import SwiftUI
+import AppKit
 import MarkdownUI
 import AIChatRouterKit
 
 struct MessageBubbleView: View {
     let message: Message
+    let imageAttachment: ImageAttachment?
     let displayName: (String) -> String
     @State private var sourcesExpanded = false
 
@@ -11,6 +13,13 @@ struct MessageBubbleView: View {
         HStack {
             if message.role == .user { Spacer(minLength: 40) }
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
+                if let imageAttachment, let nsImage = NSImage(data: imageAttachment.imageData) {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: 240, maxHeight: 240)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
                 // Only the model's replies get Markdown rendering — a user's own
                 // typed message stays literal, since they didn't necessarily
                 // intend "#" or "-" at the start of a line as formatting.

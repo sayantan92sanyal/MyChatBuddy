@@ -9,7 +9,7 @@ struct SettingsView: View {
             APIKeysSettingsView()
                 .tabItem { Label("API Keys", systemImage: "key") }
 
-            LocalModelSettingsView(modelManager: environment.localModelManager)
+            LocalModelSettingsView(modelManager: environment.localModelManager, settingsStore: environment.settingsStore)
                 .tabItem { Label("Local Model", systemImage: "cpu") }
 
             TierProviderMappingView(environment: environment)

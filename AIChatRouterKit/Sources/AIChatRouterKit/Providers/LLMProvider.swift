@@ -23,10 +23,17 @@ public struct ChatTurn: Sendable, Codable, Equatable {
 
     public let role: Role
     public let content: String
+    /// Raw image bytes attached to this turn. Empty for every turn except the one
+    /// a user attached an image to — images are per-message, never re-sent as
+    /// context on later turns. Only a `.vision`-kind `LocalMLXProvider` reads this;
+    /// every other provider ignores it, which is safe because attaching an image
+    /// bypasses `RoutingCoordinator` entirely and routes straight to that provider.
+    public let images: [Data]
 
-    public init(role: Role, content: String) {
+    public init(role: Role, content: String, images: [Data] = []) {
         self.role = role
         self.content = content
+        self.images = images
     }
 }
 

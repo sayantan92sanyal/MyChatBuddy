@@ -2,6 +2,7 @@ import GRDB
 
 public enum ProviderID: String, Codable, Sendable, CaseIterable {
     case localMLX
+    case localVLM
     case anthropic
     case openAI
 }

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UniformTypeIdentifiers
 import AIChatRouterKit
 
 @Observable
@@ -16,6 +17,9 @@ final class ChatViewModel {
     private(set) var pendingSearchPermission = false
     private(set) var attachments: [Attachment] = []
     private(set) var attachmentError: String?
+    private(set) var pendingImage: Data?
+    private(set) var pendingImageFilename: String?
+    private(set) var imageAttachmentsByMessageID: [UUID: ImageAttachment] = [:]
 
     private let conversationStore: ConversationStore
     private let messageStore: MessageStore
@@ -24,6 +28,7 @@ final class ChatViewModel {
     private let usageLimiter: UsageLimiter
     private let settingsStore: AppSettingsStore
     private let attachmentStore: AttachmentStore
+    private let imageAttachmentStore: ImageAttachmentStore
 
     private struct PendingSend {
         let turns: [ChatTurn]
@@ -45,7 +50,8 @@ final class ChatViewModel {
         providerRegistry: ProviderRegistry,
         usageLimiter: UsageLimiter,
         settingsStore: AppSettingsStore,
-        attachmentStore: AttachmentStore
+        attachmentStore: AttachmentStore,
+        imageAttachmentStore: ImageAttachmentStore
     ) {
         self.conversation = conversation
         self.conversationStore = conversationStore
@@ -55,6 +61,7 @@ final class ChatViewModel {
         self.usageLimiter = usageLimiter
         self.settingsStore = settingsStore
         self.attachmentStore = attachmentStore
+        self.imageAttachmentStore = imageAttachmentStore
     }
 
     func loadMessages() async {
@@ -71,6 +78,60 @@ final class ChatViewModel {
         } catch {
             attachmentError = "Failed to load attachments: \(error.localizedDescription)"
         }
+    }
+
+    func loadImageAttachments() async {
+        do {
+            let images = try await imageAttachmentStore.images(for: conversation.id)
+            imageAttachmentsByMessageID = Dictionary(uniqueKeysWithValues: images.map { ($0.messageID, $0) })
+        } catch {
+            attachmentError = "Failed to load images: \(error.localizedDescription)"
+        }
+    }
+
+    /// `extraImagesIgnored` lets the caller (the composer's multi-select/drop
+    /// handler) report that more than one image file was picked in a single
+    /// action — only the first is ever kept as pending, but the rest must be
+    /// surfaced, never silently dropped.
+    func attachPendingImage(fileURL: URL, extraImagesIgnored: Int = 0) async {
+        guard !isStreaming else {
+            attachmentError = "Wait for the current response to finish before attaching an image."
+            return
+        }
+        attachmentError = nil
+
+        guard let data = try? Data(contentsOf: fileURL) else {
+            attachmentError = "\(fileURL.lastPathComponent): couldn't read this file."
+            return
+        }
+
+        let sizeCap = settingsStore.loadImageAttachmentSizeCapBytes()
+        guard data.count <= sizeCap else {
+            attachmentError = "\(fileURL.lastPathComponent) is \(data.count) bytes, over the \(sizeCap)-byte limit for image attachments."
+            return
+        }
+
+        guard let downscaled = ImageDownscaler().downscale(data) else {
+            attachmentError = "\(fileURL.lastPathComponent): couldn't read this as an image."
+            return
+        }
+
+        pendingImage = downscaled
+        pendingImageFilename = fileURL.lastPathComponent
+
+        if extraImagesIgnored > 0 {
+            attachmentError = "Only one image can be attached per message — using \(fileURL.lastPathComponent); ignored \(extraImagesIgnored) other image file(s) from the same selection."
+        }
+    }
+
+    func removePendingImage() {
+        pendingImage = nil
+        pendingImageFilename = nil
+    }
+
+    static func isImageFile(_ url: URL) -> Bool {
+        guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
+        return type.conforms(to: .image)
     }
 
     func addAttachment(fileURL: URL) async {
@@ -144,6 +205,16 @@ final class ChatViewModel {
         pendingSearchPermission = false
         pendingSend = nil
 
+        let imageForThisSend = pendingImage
+        let imageFilenameForThisSend = pendingImageFilename ?? "image"
+        pendingImage = nil
+        pendingImageFilename = nil
+
+        // A follow-up in a conversation that already has an image stays on the
+        // vision slot and re-attaches the most recent image: the text models can't
+        // see it, and history turns carry only text.
+        let reusedImage = imageForThisSend == nil ? mostRecentConversationImage() : nil
+
         let userMessage = Message(conversationID: conversation.id, role: .user, content: text)
         do {
             try await messageStore.append(userMessage)
@@ -155,6 +226,19 @@ final class ChatViewModel {
 
         isStreaming = true
         streamingText = ""
+
+        if let imageData = imageForThisSend ?? reusedImage?.imageData {
+            if reusedImage != nil {
+                routingNote = "Using the vision model because this conversation includes an image."
+            }
+            await sendWithVisionSlot(
+                userMessage: userMessage,
+                imageData: imageData,
+                imageFilename: imageFilenameForThisSend,
+                persistImage: reusedImage == nil
+            )
+            return
+        }
 
         let recentTurns = ContextWindowBuilder().build(from: Array(messages.dropLast()))
         let routingContext = RoutingContext(
@@ -207,6 +291,57 @@ final class ChatViewModel {
             turns: turns,
             enableWebSearch: enableWebSearch
         )
+    }
+
+    /// Deliberately bypasses `RoutingCoordinator`: an attached image always goes to
+    /// the local vision slot regardless of tier, usage caps, the search toggle, or
+    /// offline state — local inference is free and on-device, so none of that
+    /// machinery applies. No routing-log entry is written for this turn either.
+    private func mostRecentConversationImage() -> ImageAttachment? {
+        messages.reversed().lazy.compactMap { self.imageAttachmentsByMessageID[$0.id] }.first
+    }
+
+    private func sendWithVisionSlot(userMessage: Message, imageData: Data, imageFilename: String, persistImage: Bool) async {
+        guard await providerRegistry.isLocalModelReady(kind: .vision) else {
+            errorMessage = "The vision model isn't downloaded yet. Download it in Settings → Local Model before attaching images."
+            isStreaming = false
+            streamingText = ""
+            return
+        }
+
+        var turns = messages.map {
+            ChatTurn(role: ChatTurn.Role(rawValue: $0.role.rawValue) ?? .user, content: $0.content)
+        }
+        if let lastIndex = turns.indices.last {
+            let last = turns[lastIndex]
+            turns[lastIndex] = ChatTurn(role: last.role, content: last.content, images: [imageData])
+        }
+
+        let (provider, descriptor) = providerRegistry.resolveVision()
+        await performSend(
+            provider: provider,
+            modelDescriptor: descriptor,
+            turns: turns,
+            enableWebSearch: false
+        )
+
+        guard persistImage, errorMessage == nil, let lastMessage = messages.last, lastMessage.role == .assistant else {
+            return
+        }
+
+        let imageAttachment = ImageAttachment(
+            conversationID: conversation.id,
+            messageID: userMessage.id,
+            filename: imageFilename,
+            imageData: imageData,
+            sizeBytes: imageData.count
+        )
+        do {
+            try await imageAttachmentStore.append(imageAttachment)
+            imageAttachmentsByMessageID[userMessage.id] = imageAttachment
+        } catch {
+            attachmentError = "Sent, but failed to save the image for history: \(error.localizedDescription)"
+        }
     }
 
     func allowSearchOverride() async {

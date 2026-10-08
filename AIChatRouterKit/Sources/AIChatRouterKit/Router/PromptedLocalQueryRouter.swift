@@ -19,7 +19,7 @@ public struct PromptedLocalQueryRouter: QueryRouter, Sendable {
     public func classify(_ context: RoutingContext) async throws -> RoutingDecision {
         let start = Date()
         do {
-            let container = try await modelManager.loadedContainer(for: modelID)
+            let container = try await modelManager.loadedContainer(for: modelID, kind: .text)
 
             // Deliberately NOT passing context.recentTurns as ChatSession history: live
             // testing showed that once this small model sees realistic prior dialogue

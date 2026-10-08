@@ -210,6 +210,11 @@ final class ChatViewModel {
         pendingImage = nil
         pendingImageFilename = nil
 
+        // A follow-up in a conversation that already has an image stays on the
+        // vision slot and re-attaches the most recent image: the text models can't
+        // see it, and history turns carry only text.
+        let reusedImage = imageForThisSend == nil ? mostRecentConversationImage() : nil
+
         let userMessage = Message(conversationID: conversation.id, role: .user, content: text)
         do {
             try await messageStore.append(userMessage)
@@ -222,11 +227,15 @@ final class ChatViewModel {
         isStreaming = true
         streamingText = ""
 
-        if let imageData = imageForThisSend {
+        if let imageData = imageForThisSend ?? reusedImage?.imageData {
+            if reusedImage != nil {
+                routingNote = "Using the vision model because this conversation includes an image."
+            }
             await sendWithVisionSlot(
                 userMessage: userMessage,
                 imageData: imageData,
-                imageFilename: imageFilenameForThisSend
+                imageFilename: imageFilenameForThisSend,
+                persistImage: reusedImage == nil
             )
             return
         }
@@ -288,7 +297,11 @@ final class ChatViewModel {
     /// the local vision slot regardless of tier, usage caps, the search toggle, or
     /// offline state — local inference is free and on-device, so none of that
     /// machinery applies. No routing-log entry is written for this turn either.
-    private func sendWithVisionSlot(userMessage: Message, imageData: Data, imageFilename: String) async {
+    private func mostRecentConversationImage() -> ImageAttachment? {
+        messages.reversed().lazy.compactMap { self.imageAttachmentsByMessageID[$0.id] }.first
+    }
+
+    private func sendWithVisionSlot(userMessage: Message, imageData: Data, imageFilename: String, persistImage: Bool) async {
         guard await providerRegistry.isLocalModelReady(kind: .vision) else {
             errorMessage = "The vision model isn't downloaded yet. Download it in Settings → Local Model before attaching images."
             isStreaming = false
@@ -312,7 +325,7 @@ final class ChatViewModel {
             enableWebSearch: false
         )
 
-        guard errorMessage == nil, let lastMessage = messages.last, lastMessage.role == .assistant else {
+        guard persistImage, errorMessage == nil, let lastMessage = messages.last, lastMessage.role == .assistant else {
             return
         }
 

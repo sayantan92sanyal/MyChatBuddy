@@ -119,4 +119,4 @@ The logic layer has an automated test suite. The SwiftUI app target has no autom
 
 ## License
 
-No license has been chosen yet; all rights reserved by default.
+Released under the [MIT License](LICENSE). The local models the app downloads (Llama, Qwen) and the cloud APIs it can call (Anthropic, OpenAI) are separate and carry their own terms.

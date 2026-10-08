@@ -8,3 +8,4 @@ xcuserdata/
 .build/
 .index-build/
 .claude/
+Gemini_Generated_Image_*.png

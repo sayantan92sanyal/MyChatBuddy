@@ -7,7 +7,7 @@ struct MenuBarContentView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button("Open AIChatRouter") {
+        Button("Open MyChatBuddy") {
             NSApp.activate(ignoringOtherApps: true)
             openWindow(id: "main")
         }
@@ -25,7 +25,7 @@ struct MenuBarContentView: View {
 
         Divider()
 
-        Button("Quit AIChatRouter") {
+        Button("Quit MyChatBuddy") {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q", modifiers: .command)

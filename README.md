@@ -1,6 +1,6 @@
-# Adaptive AI Chat Router
+# MyChatBuddy
 
-A native macOS chat app that routes each query to a local on-device MLX model,
+MyChatBuddy is a native macOS chat app that routes each query to a local on-device MLX model,
 a fast cloud model, or an advanced cloud model, based on an on-device
 classification pass. See `AIChatRouterKit/` for the routing/persistence/provider
 business logic and `AIChatRouter/` for the SwiftUI app.

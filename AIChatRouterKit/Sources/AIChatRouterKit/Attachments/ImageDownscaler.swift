@@ -16,12 +16,15 @@ public struct ImageDownscaler: Sendable {
         // Retina screenshot (3000x2000 px) reports 1500x1000 and would slip past
         // the limit check at full resolution.
         let pixelSize: NSSize
-        if let rep = image.representations.max(by: { $0.pixelsWide * $0.pixelsHigh < $1.pixelsWide * $1.pixelsHigh }),
-           rep.pixelsWide > 0, rep.pixelsHigh > 0 {
+        let sourceRep = image.representations.max(by: { $0.pixelsWide * $0.pixelsHigh < $1.pixelsWide * $1.pixelsHigh })
+        if let rep = sourceRep, rep.pixelsWide > 0, rep.pixelsHigh > 0 {
             pixelSize = NSSize(width: rep.pixelsWide, height: rep.pixelsHigh)
         } else {
             pixelSize = image.size
         }
+        // Opaque sources (camera photos) are several times smaller as JPEG than PNG;
+        // anything with transparency keeps PNG so the alpha channel survives.
+        let isOpaque = sourceRep?.hasAlpha == false
         let size = pixelSize
         let longestEdge = max(size.width, size.height)
         guard longestEdge > maxLongestEdge else { return data }
@@ -61,6 +64,8 @@ public struct ImageDownscaler: Sendable {
         context.flushGraphics()
         NSGraphicsContext.restoreGraphicsState()
 
-        return rep.representation(using: .png, properties: [:])
+        return isOpaque
+            ? rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85])
+            : rep.representation(using: .png, properties: [:])
     }
 }

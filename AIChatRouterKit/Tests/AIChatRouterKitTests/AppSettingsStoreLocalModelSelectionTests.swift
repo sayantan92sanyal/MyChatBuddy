@@ -26,7 +26,7 @@ struct AppSettingsStoreLocalModelSelectionTests {
 
     @Test func visionModelIDPersistsACustomValue() {
         let store = makeStore()
-        store.saveActiveLocalVisionModelID("mlx-community/Qwen3-VL-8B-Thinking-4bit")
-        #expect(store.loadActiveLocalVisionModelID(default: "fallback-vision") == "mlx-community/Qwen3-VL-8B-Thinking-4bit")
+        store.saveActiveLocalVisionModelID("mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+        #expect(store.loadActiveLocalVisionModelID(default: "fallback-vision") == "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
     }
 }

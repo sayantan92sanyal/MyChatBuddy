@@ -309,8 +309,7 @@ final class ChatViewModel {
             provider: provider,
             modelDescriptor: descriptor,
             turns: turns,
-            enableWebSearch: false,
-            isReasoningModel: true
+            enableWebSearch: false
         )
 
         guard errorMessage == nil, let lastMessage = messages.last, lastMessage.role == .assistant else {
@@ -398,8 +397,7 @@ final class ChatViewModel {
         provider: LLMProvider,
         modelDescriptor: ProviderModelDescriptor,
         turns: [ChatTurn],
-        enableWebSearch: Bool,
-        isReasoningModel: Bool = false
+        enableWebSearch: Bool
     ) async {
         if modelDescriptor.providerID != .localMLX, await !provider.isConfigured() {
             errorMessage = "\(modelDescriptor.displayName) needs an API key. Add one in Settings before sending."
@@ -416,15 +414,12 @@ final class ChatViewModel {
                 model: modelDescriptor,
                 systemPrompt: attachmentsSystemPrompt,
                 turns: turns,
-                // Reasoning models spend tokens thinking before they answer, so they
-                // need headroom beyond the answer itself.
-                maxOutputTokens: isReasoningModel ? 4096 : 1024,
+                maxOutputTokens: 1024,
                 enableWebSearch: enableWebSearch
             )
-            var thinkingStripper = ThinkingStripper()
             for try await chunk in stream {
                 if !chunk.deltaText.isEmpty {
-                    streamingText += isReasoningModel ? thinkingStripper.feed(chunk.deltaText) : chunk.deltaText
+                    streamingText += chunk.deltaText
                 }
                 if chunk.isFinal {
                     finalUsage = chunk.usage
@@ -432,8 +427,6 @@ final class ChatViewModel {
                     finalCitations = chunk.citations
                 }
             }
-
-            if isReasoningModel { streamingText += thinkingStripper.finish() }
 
             // A stream that ends without throwing but produced no text (e.g. a
             // provider-side tool/search failure surfaced as a quiet empty

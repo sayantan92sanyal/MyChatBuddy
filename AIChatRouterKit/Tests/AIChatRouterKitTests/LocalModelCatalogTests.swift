@@ -22,6 +22,6 @@ struct LocalModelCatalogTests {
     }
 
     @Test func visionCatalogIncludesTheVerifiedQwenModel() {
-        #expect(LocalModelCatalog.visionModels.contains { $0.id == "mlx-community/Qwen3-VL-8B-Thinking-4bit" })
+        #expect(LocalModelCatalog.visionModels.contains { $0.id == "mlx-community/Qwen2.5-VL-7B-Instruct-4bit" })
     }
 }

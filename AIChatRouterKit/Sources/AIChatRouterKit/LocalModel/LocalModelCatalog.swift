@@ -41,15 +41,15 @@ public enum LocalModelCatalog {
         displayName: "Qwen2.5 7B Instruct (4-bit)",
         kind: .text
     )
-    public static let qwen3VL8BThinking = LocalModelOption(
-        id: "mlx-community/Qwen3-VL-8B-Thinking-4bit",
-        displayName: "Qwen3-VL 8B Thinking (4-bit)",
+    public static let qwen2_5VL7B = LocalModelOption(
+        id: "mlx-community/Qwen2.5-VL-7B-Instruct-4bit",
+        displayName: "Qwen2.5-VL 7B Instruct (4-bit)",
         kind: .vision
     )
 
     public static let textModels: [LocalModelOption] = [llama3_2_3B, qwen2_5_3B, qwen2_5_7B]
-    public static let visionModels: [LocalModelOption] = [qwen3VL8BThinking]
+    public static let visionModels: [LocalModelOption] = [qwen2_5VL7B]
 
     public static let defaultText = llama3_2_3B
-    public static let defaultVision = qwen3VL8BThinking
+    public static let defaultVision = qwen2_5VL7B
 }

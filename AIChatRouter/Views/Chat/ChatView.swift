@@ -23,7 +23,8 @@ struct ChatView: View {
             providerRegistry: environment.providerRegistry,
             usageLimiter: environment.usageLimiter,
             settingsStore: environment.settingsStore,
-            attachmentStore: environment.attachmentStore
+            attachmentStore: environment.attachmentStore,
+            imageAttachmentStore: environment.imageAttachmentStore
         ))
     }
 
@@ -168,6 +169,7 @@ struct ChatView: View {
         .task {
             await viewModel.loadMessages()
             await viewModel.loadAttachments()
+            await viewModel.loadImageAttachments()
         }
     }
 

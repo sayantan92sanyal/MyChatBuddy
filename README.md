@@ -10,9 +10,9 @@ Everything runs on your Mac except the cloud calls you choose to enable. Your ch
   - **Local** — an MLX model running on your Mac (free, private, works offline).
   - **Cloud Fast** — a quick, cheap cloud model (default: Claude Sonnet or GPT-4o mini).
   - **Cloud Advanced** — a stronger cloud model for hard questions (default: Claude Opus or GPT-4o).
-  - If the classifier is unavailable or you're offline, it falls back to the local model rather than risking an unwanted cloud call. A routing-sensitivity setting (prefer local / balanced / prefer cloud) biases the choice.
+  - If the classifier is unavailable or you're offline, it falls back to the local model rather than risking an unwanted cloud call. A routing-sensitivity setting (prefer local / balanced / prefer cloud, under Settings → Routing) biases the choice.
 - **Model badge on every reply** showing which model answered and how many tokens it used.
-- **Usage limits.** Optional per-conversation token soft cap, daily and monthly dollar budgets, and per-tier daily call caps. When a cap is hit the app downgrades the tier and tells you; a usage dashboard shows spend.
+- **Usage limits.** Optional per-conversation token soft cap, daily and monthly dollar budgets, and per-tier daily call caps. When a cap is hit the app downgrades the tier and tells you; the Settings → Usage tab shows spend.
 - **Web search** for current-events questions, using Anthropic's web search tool, with a sources list under the answer. Currently Anthropic-only; there is a global on/off toggle. If a search is needed but you're over budget, the app asks before spending one more cloud call.
 - **File attachments.** Attach `.txt`, `.pdf`, `.docx` and source-code files; their text is included as context for the conversation. Combined size is capped (default 50,000 characters, adjustable in Settings → Limits). This is plain text extraction, not retrieval/embedding.
 - **Image understanding (local vision).** Attach an image and a local vision model describes or answers questions about it, entirely on-device. Images bypass routing and cost nothing. Once a conversation contains an image, follow-up questions stay on the vision model and re-send the latest image. One image per message for now; large images are downscaled (longest edge 1568 px) and a source-size cap applies (default 10 MB).
@@ -60,7 +60,7 @@ xcodebuild -project AIChatRouter.xcodeproj -scheme AIChatRouter -destination 'pl
 
 1. **Settings → Local Model** — download the text model (and the vision model if you want image support). Local features need these downloaded first.
 2. **Settings → API Keys** — optionally add your Anthropic and/or OpenAI keys. They are saved in the macOS Keychain, never in files.
-3. **Settings → Tier Mapping** — choose which provider handles Cloud Fast and Cloud Advanced.
+3. **Settings → Routing** — choose which provider handles Cloud Fast and Cloud Advanced, and how strongly routing should favor local or cloud.
 4. **Settings → Limits** — optionally set budgets and caps.
 5. Start chatting. Use the paperclip to attach files or images.
 

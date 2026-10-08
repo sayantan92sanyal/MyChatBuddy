@@ -43,6 +43,7 @@ struct ProviderRegistryTests {
 
         let resolved = registry.resolve(tier: .local)
         #expect(resolved?.descriptor.id == "text-b")
+        #expect(resolved?.descriptor.providerID == .localMLX)
     }
 
     @Test func resolveVisionResolvesToTheDefaultVisionModelWhenNothingIsSaved() {
@@ -59,6 +60,7 @@ struct ProviderRegistryTests {
 
         let resolved = registry.resolveVision()
         #expect(resolved.descriptor.id == "vision-b")
+        #expect(resolved.descriptor.providerID == .localVLM)
     }
 
     @Test func cloudTierResolutionIsUnaffectedByTheLocalRewrite() {

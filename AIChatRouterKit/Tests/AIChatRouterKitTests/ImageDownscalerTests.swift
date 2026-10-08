@@ -69,6 +69,31 @@ struct ImageDownscalerTests {
         #expect(abs(Double(out.pixelsWide) / Double(out.pixelsHigh) - 1.5) < 0.05)
     }
 
+    @Test func opaquePhotosAreReencodedAsJPEGNotPNG() {
+        // No alpha channel (like a camera photo): PNG would be several times larger.
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 3000, pixelsHigh: 2000,
+            bitsPerSample: 8, samplesPerPixel: 3, hasAlpha: false, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        )!
+        let data = rep.representation(using: .png, properties: [:])!
+
+        guard let result = ImageDownscaler().downscale(data, maxLongestEdge: 1000) else {
+            Issue.record("Expected a downscaled result")
+            return
+        }
+        #expect(Array(result.prefix(2)) == [0xFF, 0xD8]) // JPEG magic bytes
+    }
+
+    @Test func imagesWithTransparencyStayPNG() {
+        let data = makeSolidColorPNGData(width: 3000, height: 1500)
+        guard let result = ImageDownscaler().downscale(data, maxLongestEdge: 1000) else {
+            Issue.record("Expected a downscaled result")
+            return
+        }
+        #expect(Array(result.prefix(4)) == [0x89, 0x50, 0x4E, 0x47]) // PNG magic bytes
+    }
+
     @Test func undecodableDataReturnsNil() {
         let garbage = Data([0x00, 0x01, 0x02, 0x03])
         #expect(ImageDownscaler().downscale(garbage) == nil)

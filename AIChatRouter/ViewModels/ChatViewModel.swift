@@ -1,4 +1,5 @@
 import Foundation
+import CoreImage
 import Observation
 import UniformTypeIdentifiers
 import AIChatRouterKit
@@ -83,7 +84,7 @@ final class ChatViewModel {
     func loadImageAttachments() async {
         do {
             let images = try await imageAttachmentStore.images(for: conversation.id)
-            imageAttachmentsByMessageID = Dictionary(uniqueKeysWithValues: images.map { ($0.messageID, $0) })
+            imageAttachmentsByMessageID = Dictionary(images.map { ($0.messageID, $0) }, uniquingKeysWith: { _, newer in newer })
         } catch {
             attachmentError = "Failed to load images: \(error.localizedDescription)"
         }
@@ -100,28 +101,58 @@ final class ChatViewModel {
         }
         attachmentError = nil
 
-        guard let data = try? Data(contentsOf: fileURL) else {
-            attachmentError = "\(fileURL.lastPathComponent): couldn't read this file."
-            return
-        }
-
         let sizeCap = settingsStore.loadImageAttachmentSizeCapBytes()
-        guard data.count <= sizeCap else {
-            attachmentError = "\(fileURL.lastPathComponent) is \(data.count) bytes, over the \(sizeCap)-byte limit for image attachments."
+        let name = fileURL.lastPathComponent
+        // Read, decode and downscale off the main actor — a large photo would
+        // otherwise freeze the UI for the duration.
+        let prepared = await Task.detached { Self.prepareImage(fileURL: fileURL, sizeCap: sizeCap) }.value
+
+        let downscaled: Data
+        switch prepared {
+        case .ready(let data):
+            downscaled = data
+        case .unreadable:
+            attachmentError = "\(name): couldn't read this file."
+            return
+        case .tooLarge(let bytes):
+            attachmentError = "\(name) is \(bytes) bytes, over the \(sizeCap)-byte limit for image attachments."
+            return
+        case .notAnImage:
+            attachmentError = "\(name): couldn't read this as an image."
             return
         }
 
-        guard let downscaled = ImageDownscaler().downscale(data) else {
-            attachmentError = "\(fileURL.lastPathComponent): couldn't read this as an image."
-            return
-        }
-
+        let replacedFilename = pendingImage != nil ? pendingImageFilename : nil
         pendingImage = downscaled
-        pendingImageFilename = fileURL.lastPathComponent
+        pendingImageFilename = name
 
         if extraImagesIgnored > 0 {
-            attachmentError = "Only one image can be attached per message — using \(fileURL.lastPathComponent); ignored \(extraImagesIgnored) other image file(s) from the same selection."
+            attachmentError = "Only one image can be attached per message — using \(name); ignored \(extraImagesIgnored) other image file(s) from the same selection."
+        } else if let replacedFilename {
+            attachmentError = "Replaced the previously attached image (\(replacedFilename)) with \(name)."
         }
+    }
+
+    private enum PreparedImage: Sendable {
+        case ready(Data)
+        case unreadable
+        case tooLarge(Int)
+        case notAnImage
+    }
+
+    /// Checks the file size from metadata first so an oversized file is never read
+    /// into memory, then confirms the result decodes the same way the vision
+    /// provider will (CIImage) so unsupported types fail here, not at send time.
+    nonisolated private static func prepareImage(fileURL: URL, sizeCap: Int) -> PreparedImage {
+        if let size = (try? FileManager.default.attributesOfItem(atPath: fileURL.path))?[.size] as? Int, size > sizeCap {
+            return .tooLarge(size)
+        }
+        guard let data = try? Data(contentsOf: fileURL) else { return .unreadable }
+        guard data.count <= sizeCap else { return .tooLarge(data.count) }
+        guard let downscaled = ImageDownscaler().downscale(data), CIImage(data: downscaled) != nil else {
+            return .notAnImage
+        }
+        return .ready(downscaled)
     }
 
     func removePendingImage() {
@@ -196,7 +227,9 @@ final class ChatViewModel {
     }
 
     func sendMessage() async {
-        let text = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // An image with no typed question is a valid message: ask for a description.
+        if text.isEmpty, pendingImage != nil { text = "Describe this image." }
         guard !text.isEmpty, !isStreaming else { return }
         draftText = ""
         errorMessage = nil
@@ -303,7 +336,7 @@ final class ChatViewModel {
 
     private func sendWithVisionSlot(userMessage: Message, imageData: Data, imageFilename: String, persistImage: Bool) async {
         guard await providerRegistry.isLocalModelReady(kind: .vision) else {
-            errorMessage = "The vision model isn't downloaded yet. Download it in Settings → Local Model before attaching images."
+            errorMessage = "The vision model isn't downloaded yet. Download it in Settings → Local Model, then attach the image again."
             isStreaming = false
             streamingText = ""
             return
@@ -324,6 +357,10 @@ final class ChatViewModel {
             turns: turns,
             enableWebSearch: false
         )
+
+        if persistImage, errorMessage != nil {
+            errorMessage = (errorMessage ?? "") + " The image wasn't sent — attach it again to retry."
+        }
 
         guard persistImage, errorMessage == nil, let lastMessage = messages.last, lastMessage.role == .assistant else {
             return
@@ -412,7 +449,7 @@ final class ChatViewModel {
         turns: [ChatTurn],
         enableWebSearch: Bool
     ) async {
-        if modelDescriptor.providerID != .localMLX, await !provider.isConfigured() {
+        if modelDescriptor.providerID != .localMLX, modelDescriptor.providerID != .localVLM, await !provider.isConfigured() {
             errorMessage = "\(modelDescriptor.displayName) needs an API key. Add one in Settings before sending."
             isStreaming = false
             streamingText = ""

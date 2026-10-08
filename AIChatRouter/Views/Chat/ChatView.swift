@@ -146,6 +146,7 @@ struct ChatView: View {
             MessageComposerView(
                 text: $viewModel.draftText,
                 isSending: viewModel.isStreaming,
+                hasPendingImage: viewModel.pendingImage != nil,
                 onSend: { Task { await viewModel.sendMessage() } },
                 onAttach: { showingFileImporter = true }
             )

@@ -21,7 +21,7 @@ struct AIChatRouterApp: App {
         Settings {
             SettingsView(environment: environment)
         }
-        MenuBarExtra("AIChatRouter", systemImage: "bubble.left.and.bubble.right.fill") {
+        MenuBarExtra("MyChatBuddy", systemImage: "bubble.left.and.bubble.right.fill") {
             MenuBarContentView(environment: environment)
         }
     }

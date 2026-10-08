@@ -82,7 +82,7 @@ struct ChatView: View {
                             }
                             if viewModel.isStreaming {
                                 HStack {
-                                    Text(viewModel.streamingText)
+                                    Text(viewModel.streamingText.isEmpty ? "Thinking…" : viewModel.streamingText)
                                         .padding(10)
                                         .background(Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
                                     Spacer(minLength: 40)

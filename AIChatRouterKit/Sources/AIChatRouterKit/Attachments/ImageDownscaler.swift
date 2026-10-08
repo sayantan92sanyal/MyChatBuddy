@@ -12,7 +12,17 @@ public struct ImageDownscaler: Sendable {
 
     public func downscale(_ data: Data, maxLongestEdge: CGFloat = Self.maxLongestEdge) -> Data? {
         guard let image = NSImage(data: data) else { return nil }
-        let size = image.size
+        // Measure in pixels, not points: NSImage.size is in points, so a 144-dpi
+        // Retina screenshot (3000x2000 px) reports 1500x1000 and would slip past
+        // the limit check at full resolution.
+        let pixelSize: NSSize
+        if let rep = image.representations.max(by: { $0.pixelsWide * $0.pixelsHigh < $1.pixelsWide * $1.pixelsHigh }),
+           rep.pixelsWide > 0, rep.pixelsHigh > 0 {
+            pixelSize = NSSize(width: rep.pixelsWide, height: rep.pixelsHigh)
+        } else {
+            pixelSize = image.size
+        }
+        let size = pixelSize
         let longestEdge = max(size.width, size.height)
         guard longestEdge > maxLongestEdge else { return data }
 
@@ -44,7 +54,7 @@ public struct ImageDownscaler: Sendable {
         NSGraphicsContext.current = context
         image.draw(
             in: NSRect(origin: .zero, size: newSize),
-            from: NSRect(origin: .zero, size: size),
+            from: .zero,
             operation: .copy,
             fraction: 1.0
         )

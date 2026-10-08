@@ -4,14 +4,19 @@ import Testing
 
 @Suite("ImageDownscaler")
 struct ImageDownscalerTests {
+    /// Pixel-exact fixture (1 point == 1 pixel): `lockFocus` would render at the
+    /// screen's backing scale and make the pixel size machine-dependent.
     private func makeSolidColorPNGData(width: Int, height: Int) -> Data {
-        let image = NSImage(size: NSSize(width: width, height: height))
-        image.lockFocus()
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        )!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
         NSColor.red.setFill()
         NSRect(x: 0, y: 0, width: width, height: height).fill()
-        image.unlockFocus()
-        let tiff = image.tiffRepresentation!
-        let rep = NSBitmapImageRep(data: tiff)!
+        NSGraphicsContext.restoreGraphicsState()
         return rep.representation(using: .png, properties: [:])!
     }
 
@@ -42,6 +47,26 @@ struct ImageDownscalerTests {
         #expect(rep.pixelsHigh <= 1000)
         // Aspect ratio preserved (3000:1500 == 2:1 source, within rounding).
         #expect(abs(Double(rep.pixelsWide) / Double(rep.pixelsHigh) - 2.0) < 0.05)
+    }
+
+    @Test func retinaImagesAreMeasuredInPixelsNotPoints() {
+        // A 3000x2000-pixel PNG saved at 144 dpi reports NSImage.size of 1500x1000
+        // points — exactly what every Retina screenshot looks like.
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 3000, pixelsHigh: 2000,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        )!
+        rep.size = NSSize(width: 1500, height: 1000)
+        let data = rep.representation(using: .png, properties: [:])!
+
+        guard let result = ImageDownscaler().downscale(data, maxLongestEdge: 1568),
+              let out = NSBitmapImageRep(data: result) else {
+            Issue.record("Expected a decodable downscaled result")
+            return
+        }
+        #expect(max(out.pixelsWide, out.pixelsHigh) <= 1568)
+        #expect(abs(Double(out.pixelsWide) / Double(out.pixelsHigh) - 1.5) < 0.05)
     }
 
     @Test func undecodableDataReturnsNil() {

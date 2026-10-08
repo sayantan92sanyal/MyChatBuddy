@@ -5,16 +5,35 @@ import AIChatRouterKit
 @Observable
 @MainActor
 final class LocalModelSettingsViewModel {
-    let options: [LocalModelOption] = LocalModelCatalog.all
-    var selectedModelID: String = LocalModelCatalog.default.id
+    let kind: LocalModelOption.ModelKind
+    let options: [LocalModelOption]
+    var selectedModelID: String
     private(set) var isDownloading = false
     private(set) var progress: Double?
     private(set) var statusMessage: String = "Not downloaded yet."
 
     private let modelManager: LocalModelManager
+    private let settingsStore: AppSettingsStore
 
-    init(modelManager: LocalModelManager) {
+    init(kind: LocalModelOption.ModelKind, modelManager: LocalModelManager, settingsStore: AppSettingsStore) {
+        self.kind = kind
         self.modelManager = modelManager
+        self.settingsStore = settingsStore
+        switch kind {
+        case .text:
+            self.options = LocalModelCatalog.textModels
+            self.selectedModelID = settingsStore.loadActiveLocalTextModelID(default: LocalModelCatalog.defaultText.id)
+        case .vision:
+            self.options = LocalModelCatalog.visionModels
+            self.selectedModelID = settingsStore.loadActiveLocalVisionModelID(default: LocalModelCatalog.defaultVision.id)
+        }
+    }
+
+    func save() {
+        switch kind {
+        case .text: settingsStore.saveActiveLocalTextModelID(selectedModelID)
+        case .vision: settingsStore.saveActiveLocalVisionModelID(selectedModelID)
+        }
     }
 
     func refreshStatus() async {
@@ -38,7 +57,7 @@ final class LocalModelSettingsViewModel {
         statusMessage = "Downloading…"
 
         do {
-            _ = try await modelManager.loadedContainer(for: selectedModelID) { [weak self] fraction in
+            _ = try await modelManager.loadedContainer(for: selectedModelID, kind: kind) { [weak self] fraction in
                 Task { @MainActor in
                     self?.progress = fraction
                 }

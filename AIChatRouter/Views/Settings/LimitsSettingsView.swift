@@ -37,6 +37,14 @@ struct LimitsSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Image Attachments") {
+                TextField("Max source image size (bytes)", text: $viewModel.imageAttachmentSizeCapBytes)
+                    .onSubmit { viewModel.save() }
+                Text("Leave blank or 0 to use the default (\(AppSettingsStore.defaultImageAttachmentSizeCapBytes) bytes ≈ \(AppSettingsStore.defaultImageAttachmentSizeCapBytes / 1_000_000)MB). Checked before downscaling, so an oversized source photo is rejected outright rather than silently downsized.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
             Button("Save") { viewModel.save() }
 
             Text("Leave a field blank to disable that cap. Hard caps downgrade Advanced → Fast → Local rather than blocking the request.")

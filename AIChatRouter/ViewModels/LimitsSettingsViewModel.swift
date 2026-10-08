@@ -11,6 +11,7 @@ final class LimitsSettingsViewModel {
     var cloudFastDailyCallCap: String = ""
     var cloudAdvancedDailyCallCap: String = ""
     var attachmentSizeCapCharacters: String = ""
+    var imageAttachmentSizeCapBytes: String = ""
 
     private let settingsStore: AppSettingsStore
 
@@ -23,6 +24,7 @@ final class LimitsSettingsViewModel {
         cloudFastDailyCallCap = config.perTierDailyCallCap[.cloudFast].map(String.init) ?? ""
         cloudAdvancedDailyCallCap = config.perTierDailyCallCap[.cloudAdvanced].map(String.init) ?? ""
         attachmentSizeCapCharacters = String(settingsStore.loadAttachmentSizeCapCharacters())
+        imageAttachmentSizeCapBytes = String(settingsStore.loadImageAttachmentSizeCapBytes())
     }
 
     func save() {
@@ -40,6 +42,9 @@ final class LimitsSettingsViewModel {
 
         if let value = Int(attachmentSizeCapCharacters) {
             settingsStore.saveAttachmentSizeCapCharacters(value)
+        }
+        if let value = Int(imageAttachmentSizeCapBytes) {
+            settingsStore.saveImageAttachmentSizeCapBytes(value)
         }
     }
 }
